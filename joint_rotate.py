@@ -11,6 +11,7 @@ import pandas as pd
 from utils_data import *
 from utils_node import *
 from utils_rbf_transform import *
+from utils_smooth import *
 from scipy.spatial import cKDTree
 
 # 计算点集的几何中心
@@ -77,60 +78,6 @@ def rotate_nodes_from_set_optimized(all_points, center, rotation_axis, angle_deg
 
     return rotated_all_points
 
-# def get_control_points4(all_points,rotated_all_points,control_fixed_method, control_fixed_param, control_moving_method, control_moving_param):
-#     """
-#     获取控制点（固定点和运动点），并返回它们的源和目标坐标。
-    
-#     参数:
-#         all_points (np.array): 所有节点的原始坐标，形状为 (N, 4)，每行包含 [node_id, x, y, z]。
-#         rotated_all_points (np.array): 所有节点的旋转后坐标，形状为 (N, 4)，每行包含 [node_id, x, y, z]。
-#         fixed_method (str): 获取固定控制点的方式，"pid" 或 "set"。
-#         fixed_param (list): 获取固定控制点的参数（PID 或 set_id 列表）。
-#         moving_method (str): 获取运动控制点的方式，"pid" 或 "set"。
-#         moving_param (list): 获取运动控制点的参数（PID 或 set_id 列表）。
-    
-#     返回:
-#         source_control_points (np.array): 固定点和运动点的源坐标。
-#         target_control_points (np.array): 固定点和运动点的目标坐标。
-#     """
-    
-    
-    
-#     # # 使用 set_id 提取固定控制点
-#     # fixed_control_nodes = get_all_nodes("pid", ["89200801"])
-#     # fixed_control_nodes_selectedL = select_uniform_nodes(fixed_control_nodes, 80)
-#     # print(f"id:{[node._id for node in fixed_control_nodes_selectedL]}")
-#     # # 获取固定控制点的 source 和 target 坐标（source 和 target 坐标相同）
-#     # fixed_points = np.array([[node._id] + list(node.position) for node in fixed_control_nodes_selectedL])
-
-#     # # 使用 set_id 提取固定控制点
-#     # fixed_control_nodes = get_all_nodes("pid", ["89200801"])
-#     # print(f"id:{[node._id for node in fixed_control_nodes]}")
-#     # # 获取固定控制点的 source 和 target 坐标（source 和 target 坐标相同）
-#     # fixed_points = np.array([[node._id] + list(node.position) for node in fixed_control_nodes])
-
-
-#     # 使用 set_id 提取固定控制点
-#     fixed_control_nodes = get_all_nodes(control_fixed_method, control_fixed_param)
-#     #print(f"id:{[node._id for node in fixed_control_nodes]}")
-#     # 获取固定控制点的 source 和 target 坐标（source 和 target 坐标相同）
-#     fixed_points = np.array([[node._id] + list(node.position) for node in fixed_control_nodes])
-
-#     # 使用 set_id 提取运动控制点
-#     #pids = ["86200001","86200301", "86200501", "86200801", "86201001"]
-#     moving_control_nodes = get_all_nodes(control_moving_method, control_moving_param)
-#     #print(f"id:{[node._id for node in moving_control_nodes]}")
-                                   
-#     # 获取运动控制点的 source 和 target 坐标
-#     moving_source_points = np.array([[node._id] + list(all_points[all_points[:, 0] == node._id][0, 1:]) 
-#                                      for node in moving_control_nodes])
-#     moving_target_points = np.array([[node._id] + list(rotated_all_points[rotated_all_points[:, 0] == node._id][0, 1:])
-#                                      for node in moving_control_nodes])
-#     # 合并固定和运动控制点
-#     source_control_points = np.vstack([fixed_points, moving_source_points])
-#     target_control_points = np.vstack([fixed_points, moving_target_points])
-#     return source_control_points, target_control_points
-
 def get_control_points4(all_points, rotated_all_points, control_fixed_method, control_fixed_param, 
                         control_moving_method, control_moving_param, 
                         uniform_fixed_node_count=None, uniform_moving_node_count=None):
@@ -154,17 +101,16 @@ def get_control_points4(all_points, rotated_all_points, control_fixed_method, co
     """
     # 获取固定控制点
     fixed_control_nodes = get_all_nodes(control_fixed_method, control_fixed_param)
-    print(f"固定控制点ID: {[node._id for node in fixed_control_nodes]}")
     fixed_points = np.array([[node._id] + list(node.position) for node in fixed_control_nodes])
 
     # 如果指定了均匀节点数量，应用 select_uniform_nodes 来选择固定控制点
     if uniform_fixed_node_count is not None:
         fixed_control_nodes = select_uniform_nodes(fixed_control_nodes, uniform_fixed_node_count)
         fixed_points = np.array([[node._id] + list(node.position) for node in fixed_control_nodes])
+    print(f"固定控制点ID: {[node._id for node in fixed_control_nodes]}")
 
     # 获取运动控制点
     moving_control_nodes = get_all_nodes(control_moving_method, control_moving_param)
-    print(f"运动控制点ID: {[node._id for node in moving_control_nodes]}")
 
     # 获取运动控制点的 source 和 target 坐标
     moving_source_points = np.array([[node._id] + list(all_points[all_points[:, 0] == node._id][0, 1:]) 
@@ -179,6 +125,7 @@ def get_control_points4(all_points, rotated_all_points, control_fixed_method, co
                                         for node in moving_control_nodes])
         moving_target_points = np.array([[node._id] + list(rotated_all_points[rotated_all_points[:, 0] == node._id][0, 1:])
                                         for node in moving_control_nodes])
+    print(f"运动控制点ID: {[node._id for node in moving_control_nodes]}")
 
     # 合并固定和运动控制点
     source_control_points = np.vstack([fixed_points, moving_source_points])
@@ -204,6 +151,10 @@ def main(params):
     # 获取固定控制点的数量（可选），默认为None（即不进行筛选）
     uniform_fixed_node_count = params.get('uniform_fixed_node_count', None)
     uniform_moving_node_count = params.get('uniform_moving_node_count', None)
+
+    # 获取核函数配置
+    kernel = params.get('kernel', None)  # 默认使用薄板样条
+    kernel_params = params.get('kernel_params', {})  # 获取其他核函数参数
 
     # 记录总的开始时间
     start_time = time.time()
@@ -248,7 +199,8 @@ def main(params):
     # 执行 RBF 变换，过渡部件
     print("执行 RBF 变换...")
     transformed_points = rbf_transform_3d_chunked(
-        transition_filtered_points, source_control_points, target_control_points, 0, 20000
+        transition_filtered_points, source_control_points, target_control_points, 0, 20000,
+        kernel=kernel, **kernel_params
     )
     update_ansa_node_coordinates(transformed_points, transition_filtered_nodes)
 
@@ -256,26 +208,9 @@ def main(params):
     end_time = time.time()
     print(f"总运行时间: {end_time - start_time:.2f} s")
 
-# # Shoulder
-# params1 = {
-#     'motion_method': "pid",
-#     'motion_param': ["86200001", "86200301", "86200501", "86200801", "86201001"],
-#     'rotation_angle': -75,
-#     'rotate_axis': [1, 0, 0],
-#     'center_set_ids': ["31"],
-#     'control_fixed_method': "set",
-#     'control_fixed_param': ["50"],
-#     'control_moving_method': "pid",
-#     'control_moving_param': ["86200001"],
-#     'boundary_set_ids': ["22", "20"],
-#     'transition_method': "pid",
-#     'transition_param': ["89200701"]
-# }
-# # 调用main函数，只需要传递封装的参数字典
-# main(params1)
 
-# Elbow
-params2 = {
+#Elbow
+params_elbow = {
     'motion_method': "pid",
     'motion_param': ["86200501", "86200801", "86201001"],
     'rotation_angle': -20,
@@ -288,8 +223,29 @@ params2 = {
     'boundary_set_ids': ["24", "26"],
     'transition_method': "pid",
     'transition_param': ["86200301"],
-    'uniform_fixed_node_count': 50,  # 选择50个固定控制点   
-    'uniform_moving_node_count': None  # 不筛选运动控制点
+    'uniform_fixed_node_count': None,  # 选择50个固定控制点   
+    'uniform_moving_node_count': 50  # 不筛选运动控制点
 }
-main(params2)
+main(params_elbow)
 
+# Shoulder
+params_shoulder = {
+    'motion_method': "pid",
+    'motion_param': ["86200001", "86200301", "86200501", "86200801", "86201001"],
+    'rotation_angle': -75,
+    'rotate_axis': [1, 0, 0],
+    'center_set_ids': ["31"],
+    'control_fixed_method': "set",
+    'control_fixed_param': ["50"],
+    'control_moving_method': "set",
+    'control_moving_param': ["52"],
+    'boundary_set_ids': ["22", "20"],
+    'transition_method': "pid",
+    'transition_param': ["89200701"],
+    # 'kernel': 'multiquadric', #可选 'linear'、'cubic'、'gaussian'、'multiquadric'
+    # 'kernel_params': {'epsilon': 1}
+}
+# 调用main函数，只需要传递封装的参数字典
+main(params_shoulder)
+
+laplacian_smoothing(pids=["89200701"], boundary_sets=["22", "20"], iterations=10, alpha=0.01)

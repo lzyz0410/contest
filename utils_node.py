@@ -11,7 +11,7 @@ sys.path.append(third_packages)
 
 import ansa
 from ansa import *
-from data_utils import read_csv_by_two_columns
+from utils_data import read_csv_by_two_columns
 
 def get_nodes_from_set(set_id):
     """

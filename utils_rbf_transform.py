@@ -5,9 +5,9 @@ import numpy as np
 from scipy.spatial import KDTree
 from sklearn.cluster import KMeans
 
-def rbf_transform_3d_chunked(all_points, source_control_points, target_control_points, alpha, chunk_size=20000):
+def rbf_transform_3d_chunked(all_points, source_control_points, target_control_points, alpha, chunk_size=20000,kernel=None, **kwargs):
     """
-    使用 RBF 插值对目标点进行变换，支持节点 ID 并分块计算。
+    使用 RBF 插值对目标点进行变换，支持节点 ID 并分块计算。默认使用薄板样条径向基函数
     
     参数:
         all_points (np.array): 包含 `node_id` 和坐标的数组 (N x 4)，每行 [node_id, x, y, z]。
@@ -15,19 +15,39 @@ def rbf_transform_3d_chunked(all_points, source_control_points, target_control_p
         target_control_points (np.array): 包含 `node_id` 和坐标的目标控制点数组 (M x 4)。
         alpha (float): 正则化参数，用于稳定计算。
         chunk_size (int): 每次处理的目标点数量。
+        kernel (str, optional): 径向基函数名称，可选 'linear'、'cubic'、'gaussian'、'multiquadric'，默认 None 表示薄板样条。
+        kwargs: 其他需要传递给核函数的参数（如 epsilon）。
+        #kernel='gaussian',  # 选择高斯核
+        #epsilon=0.5  # 高斯核的形状参数
         
     返回:
         transformed_points (np.array): 包含变换后坐标和 `node_id` 的数组 (N x 4)，每行 [node_id, x', y', z']。
     """
-    def rbf_phi(r):
+    def rbf_phi(r, kernel=None, **kwargs):
         """
-        基于薄板样条函数定义径向基函数。
+        根据核函数类型选择径向基函数。
+        
         参数:
-            r (float): 距离。
+            r (np.array): 距离矩阵。
+            kernel (str): 核函数类型，可选 None 表示默认使用薄板样条。
+            kwargs: 额外参数。
         返回:
-            (float): RBF 值。
+            np.array: 径向基函数的值。
         """
-        return r**2 * np.log(r + 1e-8)  # 添加 1e-8 防止 log(0)
+        epsilon = kwargs.get('epsilon', 1.0)  # 默认参数 epsilon
+        if kernel is None or kernel == 'thin_plate_spline':
+            # 默认使用薄板样条
+            return r**2 * np.log(r + 1e-8)  # 添加 1e-8 防止 log(0)
+        elif kernel == 'linear':
+            return r  
+        elif kernel == 'cubic':
+            return r**3
+        elif kernel == 'gaussian':
+            return np.exp(-(epsilon * r)**2)
+        elif kernel == 'multiquadric':
+            return np.sqrt(1 + (epsilon * r)**2)
+        else:
+            raise ValueError(f"未知的核函数类型: {kernel}")
 
     # 提取坐标部分，忽略 `node_id`
     all_coords = all_points[:, 1:]  # (N x 3)
