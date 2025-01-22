@@ -4,6 +4,8 @@ os.environ["OMP_NUM_THREADS"] = "1"
 import numpy as np
 from scipy.spatial import KDTree
 from sklearn.cluster import KMeans
+from utils_adjust import *
+from utils_node import *
 
 def rbf_transform_3d_chunked(all_points, source_control_points, target_control_points, alpha, chunk_size=20000,kernel=None, **kwargs):
     """
@@ -84,21 +86,24 @@ def rbf_transform_3d_chunked(all_points, source_control_points, target_control_p
     return transformed_points
 
 
-def compute_projection_points(all_points, target_points, alpha_second):
+def compute_projection_points(all_nodes, target_all_nodes, alpha_selected):
     """
-    根据初次变换后的点集，根据选定的大量点，通过投影计算目标控制点。
+    根据初次变换后的节点集合，通过投影计算目标控制点。
     
     参数:
-        all_points (np.array): 初次变换后的点集 (N x 4)，每行包含 [node_id, x, y, z]。
-        target_points (np.array): 目标网格的所有点 (M x 4)，每行包含 [node_id, x, y, z]。
-        alpha_second (float): 平滑参数，用于调整 RBF 插值的正则化。
+        all_nodes (list): 初次变换后的节点实体列表，每个节点包含 `_id` 和 `position` 属性。
+        target_all_nodes (list): 目标网格的节点实体列表，每个节点包含 `_id` 和 `position` 属性。
+        alpha_selected (float): 平滑参数，用于调整距离的权重。
     
     返回:
         projected_points (np.array): 投影生成的目标控制点 (N x 4)，每行包含 [node_id, x', y', z']。
     """
-    # 提取坐标部分，忽略 `node_id`
-    coords = all_points[:, 1:]  # (N x 3)
-    target_coords = target_points[:, 1:]  # (M x 3)
+    # 提取坐标和 ID
+    all_points = np.array([[node._id, *node.position] for node in all_nodes])
+    target_points = np.array([[node._id, *node.position] for node in target_all_nodes])
+
+    coords = all_points[:, 1:]  # 初次变换后的点坐标 (N x 3)
+    target_coords = target_points[:, 1:]  # 目标网格点坐标 (M x 3)
 
     # 构建 KD-Tree
     kdtree = KDTree(target_coords)
@@ -106,20 +111,29 @@ def compute_projection_points(all_points, target_points, alpha_second):
     # 对每个点找到目标网格中最近的 3 个点
     distances, indices = kdtree.query(coords, k=3)
 
-    projected_points = []
+    projected_coords = []
+    projected_ids = []
     for i, (dists, inds) in enumerate(zip(distances, indices)):
-        # 获取最近邻目标点的坐标
+        # 获取最近邻目标点的坐标和 ID
         neighbor_coords = target_coords[inds]
+        neighbor_ids = target_points[inds, 0]  # 最近邻目标点的 ID
         
         # 根据距离计算权值
-        weights = 1 / (dists + alpha_second)  # 防止 dists 为 0
+        weights = 1 / (dists + alpha_selected)  # 防止 dists 为 0
         normalized_weights = weights / weights.sum()
 
         # 计算投影点的坐标
         new_coord = (neighbor_coords * normalized_weights[:, None]).sum(axis=0)
-        projected_points.append(new_coord)
+        projected_coords.append(new_coord)
 
-    return np.array(projected_points)
+        # 选取加权最重的 ID 作为投影点的 ID
+        selected_id = neighbor_ids[np.argmax(weights)]
+        projected_ids.append(selected_id)
+
+    # 将目标点的 ID 和投影后的坐标组合
+    projected_points = np.column_stack([projected_ids, np.array(projected_coords)])
+
+    return projected_points
 
 
 def select_uniform_nodes(all_nodes, num_control_points):
@@ -171,3 +185,108 @@ def select_uniform_nodes(all_nodes, num_control_points):
                 break
 
     return selected_nodes
+
+def select_symmetric_uniform_nodes(all_nodes, num_control_points, mapping_file="node_mapping.csv"):
+    """
+    根据对称平面计算均匀分布的对称节点，并动态选择规则找到对应的对称点。
+
+    参数：
+        - all_nodes (list): 所有节点的实体对象列表，节点具有 _id 和 position 属性。
+        - num_control_points (int): 要选择的均匀对称点的总数量（包括左右两边）。
+        - mapping_file (str): 映射文件路径，默认为 "node_mapping.csv"。
+
+    返回：
+        - selected_symmetric_nodes (list): 对称点列表，均匀选取后的节点实体对象（左右合并）。
+    """
+
+    def load_mapping_file(mapping_file):
+        try:
+            df = pd.read_csv(mapping_file)
+            if "Left_Node_ID" in df.columns and "Right_Node_ID" in df.columns:
+                print(f"从文件 {mapping_file} 成功加载节点映射！")
+                # 强制将映射文件中的 ID 转为整数
+                df["Left_Node_ID"] = df["Left_Node_ID"].astype(int)
+                df["Right_Node_ID"] = df["Right_Node_ID"].astype(int)
+                # 注意这里的左右关系调整
+                mapping = dict(zip(df["Right_Node_ID"], df["Left_Node_ID"]))
+                print(f"映射文件内容（部分预览）: {list(mapping.items())[:10]}")
+                return mapping
+            else:
+                raise ValueError("映射文件缺少必要的列：Left_Node_ID 或 Right_Node_ID")
+        except Exception as e:
+            print(f"映射文件加载失败: {e}")
+            return {}
+
+    # 缓存映射数据
+    mapping = load_mapping_file(mapping_file)
+    print(f"映射文件内容预览: {list(mapping.items())[:10]}")  # 调试映射数据
+
+    # 动态选择对称规则
+    def dynamic_id_replace_rule(node_id):
+        try:
+            node_id = int(node_id)
+            node_id_str = str(node_id)
+            if node_id_str.startswith("88"):
+                # 使用缓存的映射（基于调整后的左右关系）
+                symmetric_id = mapping.get(node_id)
+                if symmetric_id is None:
+                    print(f"映射文件中未找到源节点 ID: {node_id}")
+                return symmetric_id
+            elif node_id_str.startswith("83"):
+                return int(node_id_str.replace("830", "835", 1))
+            elif node_id_str.startswith("81") or node_id_str.startswith("82"):
+                return int(node_id_str.replace("81", "82", 1)) if node_id_str.startswith("81") else int(node_id_str.replace("82", "81", 1))
+            elif node_id_str.startswith("85") or node_id_str.startswith("86"):
+                return int(node_id_str.replace("85", "86", 1)) if node_id_str.startswith("85") else int(node_id_str.replace("86", "85", 1))
+            elif node_id_str.startswith("89"):
+                return node_id + 500000 if node_id < 89000000 else node_id - 500000
+            elif node_id_str.startswith("87"):
+                return int(node_id_str.replace("870", "875", 1))
+            else:
+                print(f"未能为节点 ID {node_id} 匹配规则")
+                return None
+        except Exception as e:
+            print(f"动态规则转换失败，节点 ID: {node_id}, 错误: {e}")
+            return None
+
+    # 获取对称平面节点
+    plane_nodes = get_all_nodes("set", ["3", "4", "5", "6"])
+    enforce_coordinate_uniformity(plane_nodes, axis='y')
+    normal, point_on_plane = calculate_dynamic_reflection_plane(plane_nodes)
+
+    # 获取所有节点坐标并分离一侧的节点
+    coordinates = np.array([node.position for node in all_nodes])
+    right_nodes = []  # 原来的 left_nodes 改为 right_nodes
+    for i, coord in enumerate(coordinates):
+        source_node = all_nodes[i]
+        vector_to_plane = coord - point_on_plane
+        side = np.dot(vector_to_plane, normal)
+        if side < 0:  # 仅处理右侧节点
+            right_nodes.append(source_node)
+
+    # 从右侧节点中均匀选点
+    num_right_points = num_control_points // 2  # 原来的 num_left_points 改为 num_right_points
+    selected_right_nodes = select_uniform_nodes(right_nodes, num_right_points)  # 改为处理右侧节点
+
+    # 找到右侧选点的对称点
+    selected_left_nodes = []  # 原来的 selected_right_nodes 改为 selected_left_nodes
+    for node in selected_right_nodes:  # 遍历右侧节点
+        symmetric_id = dynamic_id_replace_rule(node._id)
+        if symmetric_id is not None:
+            symmetric_node = next((n for n in all_nodes if n._id == symmetric_id), None)
+            if symmetric_node:
+                selected_left_nodes.append(symmetric_node)
+            else:
+                print(f"对称节点 ID: {symmetric_id} 不存在于 all_nodes 中")
+        else:
+            print(f"无法为节点 ID {node._id} 生成对称 ID")
+
+    # 输出调试信息
+    print(f"选中右侧对称点 ID: {[node._id for node in selected_right_nodes]}")  # 调整输出信息
+    print(f"选中左侧对称点 ID: {[node._id for node in selected_left_nodes]}")  # 调整输出信息
+
+    # 合并左右两侧的点
+    selected_symmetric_nodes = selected_right_nodes + selected_left_nodes  # 按新的命名合并
+
+    # 返回最终结果（左右两侧点合并）
+    return selected_symmetric_nodes
