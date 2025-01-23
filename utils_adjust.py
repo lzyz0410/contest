@@ -1,33 +1,60 @@
 import numpy as np
-def enforce_coordinate_uniformity(set_nodes, axis='y'):
+def enforce_coordinate_uniformity(set_nodes, axis='y',left_nodes=None, smoothing_factor=0.1):
     """
-    强制平面点在指定轴上的坐标相同。
-    如果指定轴的坐标不同，取均值并将所有点的该轴坐标设置为均值。
+    对齐 set_nodes 的指定轴坐标到均值，并在指定条件下调整 left_nodes 的坐标。
 
     参数：
-    - set_nodes: 节点对象列表，包含 `.position` 属性 (tuple: (x, y, z))。
-    - axis: 字符串，指定要统一的轴，支持 'x'、'y'、'z'，默认值为 'y'。
+    - set_nodes: 用于构建对称面的节点对象列表，包含 `.position` 属性 (tuple: (x, y, z))。
+    - left_nodes: 左侧节点列表，所有点需满足指定轴坐标小于对称面的值。默认为 None，不进行调整。
+    - axis: 字符串，指定要对齐的轴，支持 'x'、'y'、'z'，默认值为 'y'。
+    - smoothing_factor: 平滑因子，用于动态计算偏移值比例（默认值为 0.1）。
 
     返回：
-    - 无直接返回值，直接修改 `set_nodes` 的 `.position` 属性。
+    - 无直接返回值，直接修改 `set_nodes` 和（如果适用）`left_nodes` 的 `.position` 属性。
     """
     axis_map = {'x': 0, 'y': 1, 'z': 2}
     if axis not in axis_map:
         raise ValueError(f"Invalid axis '{axis}'. Valid options are 'x', 'y', or 'z'.")
 
     axis_idx = axis_map[axis]
-    coords = np.array([node.position for node in set_nodes])
-    axis_values = coords[:, axis_idx]
 
-    if not np.allclose(axis_values, axis_values[0], atol=1e-6):
-        average_value = np.mean(axis_values)
-        print(f"{axis.upper()} 坐标不一致，强制设置为均值: {average_value:.6f}")
-        for node in set_nodes:
-            pos = list(node.position)
-            pos[axis_idx] = average_value
-            node.position = tuple(pos)
-    else:
-        print(f"所有平面点的 {axis.upper()} 坐标已一致，无需调整。")
+    # Step 1: 对齐 set_nodes 的指定轴到均值
+    coords = np.array([node.position for node in set_nodes])
+    mean_value = np.mean(coords[:, axis_idx])
+
+    print(f"对齐 set_nodes 的 {axis.upper()} 坐标，设置为均值: {mean_value:.6f}")
+    for node in set_nodes:
+        pos = list(node.position)
+        pos[axis_idx] = mean_value
+        node.position = tuple(pos)
+
+    if left_nodes is None:
+        print("left_nodes 为 None，跳过调整步骤，仅对齐 set_nodes。")
+        return
+
+    # 动态计算 offset
+    axis_range = np.ptp(coords[:, axis_idx])  # 计算 set_nodes 的轴范围（最大值 - 最小值）
+    offset = -smoothing_factor * axis_range
+    print(f"动态计算 offset 为: {offset:.6f}")
+
+    # Step 2: 调整 left_nodes 的坐标
+    print(f"对称面点的 {axis.upper()} 坐标均值为: {mean_value:.6f}")
+
+    # 找到需要调整的点
+    nodes_to_adjust = [node for node in left_nodes if node.position[axis_idx] > mean_value]
+    print(f"找到 {len(nodes_to_adjust)} 个需要调整的点，其 ID 为:")
+
+    for node in nodes_to_adjust:
+        pos = list(node.position)
+        original_value = pos[axis_idx]
+
+        # 调整值，确保小于均值
+        pos[axis_idx] = mean_value + offset
+        node.position = tuple(pos)
+
+        print(f"点 ID: {node._id}, 原始值: {original_value:.6f} -> 新值: {node.position[axis_idx]:.6f}")
+
+
 
 def calculate_dynamic_reflection_plane(set_nodes):
     """

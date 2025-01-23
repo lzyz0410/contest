@@ -186,19 +186,19 @@ def select_uniform_nodes(all_nodes, num_control_points):
 
     return selected_nodes
 
-def select_symmetric_uniform_nodes(all_nodes, num_control_points, mapping_file="node_mapping.csv"):
+def select_symmetric_uniform_nodes(all_nodes, total_side_num, total_plane_num, mapping_file="node_mapping.csv"):
     """
     根据对称平面计算均匀分布的对称节点，并动态选择规则找到对应的对称点。
 
     参数：
         - all_nodes (list): 所有节点的实体对象列表，节点具有 _id 和 position 属性。
-        - num_control_points (int): 要选择的均匀对称点的总数量（包括左右两边）。
+        - total_side_num (int): 左右两侧控制点的总数量（两侧合计，不含对称面）。
+        - total_plane_num (int): 从对称面上选择的控制点数量。
         - mapping_file (str): 映射文件路径，默认为 "node_mapping.csv"。
 
     返回：
-        - selected_symmetric_nodes (list): 对称点列表，均匀选取后的节点实体对象（左右合并）。
+        - selected_symmetric_nodes (list): 对称点列表，均匀选取后的节点实体对象（左右和对称面合并）。
     """
-
     def load_mapping_file(mapping_file):
         try:
             df = pd.read_csv(mapping_file)
@@ -207,9 +207,8 @@ def select_symmetric_uniform_nodes(all_nodes, num_control_points, mapping_file="
                 # 强制将映射文件中的 ID 转为整数
                 df["Left_Node_ID"] = df["Left_Node_ID"].astype(int)
                 df["Right_Node_ID"] = df["Right_Node_ID"].astype(int)
+                mapping = dict(zip(df["Left_Node_ID"], df["Right_Node_ID"]))
                 # 注意这里的左右关系调整
-                mapping = dict(zip(df["Right_Node_ID"], df["Left_Node_ID"]))
-                print(f"映射文件内容（部分预览）: {list(mapping.items())[:10]}")
                 return mapping
             else:
                 raise ValueError("映射文件缺少必要的列：Left_Node_ID 或 Right_Node_ID")
@@ -217,29 +216,21 @@ def select_symmetric_uniform_nodes(all_nodes, num_control_points, mapping_file="
             print(f"映射文件加载失败: {e}")
             return {}
 
-    # 缓存映射数据
-    mapping = load_mapping_file(mapping_file)
-    print(f"映射文件内容预览: {list(mapping.items())[:10]}")  # 调试映射数据
-
-    # 动态选择对称规则
     def dynamic_id_replace_rule(node_id):
+        """根据规则生成对称节点的 ID。"""
         try:
             node_id = int(node_id)
             node_id_str = str(node_id)
             if node_id_str.startswith("88"):
-                # 使用缓存的映射（基于调整后的左右关系）
-                symmetric_id = mapping.get(node_id)
-                if symmetric_id is None:
-                    print(f"映射文件中未找到源节点 ID: {node_id}")
-                return symmetric_id
+                return mapping.get(node_id)
             elif node_id_str.startswith("83"):
                 return int(node_id_str.replace("830", "835", 1))
-            elif node_id_str.startswith("81") or node_id_str.startswith("82"):
-                return int(node_id_str.replace("81", "82", 1)) if node_id_str.startswith("81") else int(node_id_str.replace("82", "81", 1))
-            elif node_id_str.startswith("85") or node_id_str.startswith("86"):
-                return int(node_id_str.replace("85", "86", 1)) if node_id_str.startswith("85") else int(node_id_str.replace("86", "85", 1))
+            elif node_id_str.startswith("82"):
+                return int(node_id_str.replace("82", "81", 1)) 
+            elif node_id_str.startswith("86"):
+                return int(node_id_str.replace("86", "85", 1)) 
             elif node_id_str.startswith("89"):
-                return node_id + 500000 if node_id < 89000000 else node_id - 500000
+                return node_id + 500000
             elif node_id_str.startswith("87"):
                 return int(node_id_str.replace("870", "875", 1))
             else:
@@ -249,44 +240,54 @@ def select_symmetric_uniform_nodes(all_nodes, num_control_points, mapping_file="
             print(f"动态规则转换失败，节点 ID: {node_id}, 错误: {e}")
             return None
 
-    # 获取对称平面节点
-    plane_nodes = get_all_nodes("set", ["3", "4", "5", "6"])
-    enforce_coordinate_uniformity(plane_nodes, axis='y')
-    normal, point_on_plane = calculate_dynamic_reflection_plane(plane_nodes)
+    # 加载映射文件
+    mapping = load_mapping_file(mapping_file)
 
-    # 获取所有节点坐标并分离一侧的节点
+    # 获取对称平面节点并计算对称面
+    plane_nodes_all = get_all_nodes("set", ["3", "4", "5", "6"])
+    enforce_coordinate_uniformity(plane_nodes_all, axis='y')
+    normal, point_on_plane = calculate_dynamic_reflection_plane(plane_nodes_all)
+
+    # 按对称性分离节点
     coordinates = np.array([node.position for node in all_nodes])
-    right_nodes = []  # 原来的 left_nodes 改为 right_nodes
+    left_nodes = []
+    plane_nodes = []
     for i, coord in enumerate(coordinates):
         source_node = all_nodes[i]
         vector_to_plane = coord - point_on_plane
         side = np.dot(vector_to_plane, normal)
-        if side < 0:  # 仅处理右侧节点
-            right_nodes.append(source_node)
+        if abs(side) < 1e-6:  # 对称面上的节点
+            plane_nodes.append(source_node)
+        elif side > 0:  # 左侧节点
+            left_nodes.append(source_node)
 
-    # 从右侧节点中均匀选点
-    num_right_points = num_control_points // 2  # 原来的 num_left_points 改为 num_right_points
-    selected_right_nodes = select_uniform_nodes(right_nodes, num_right_points)  # 改为处理右侧节点
+    # 从左侧节点中均匀选点
+    left_side_num = total_side_num // 2
+    selected_left_nodes = select_uniform_nodes(left_nodes, left_side_num)
 
-    # 找到右侧选点的对称点
-    selected_left_nodes = []  # 原来的 selected_right_nodes 改为 selected_left_nodes
-    for node in selected_right_nodes:  # 遍历右侧节点
+    # 查找左侧选点的对称点
+    selected_right_nodes = []
+    for node in selected_left_nodes:
         symmetric_id = dynamic_id_replace_rule(node._id)
-        if symmetric_id is not None:
+        if symmetric_id:
             symmetric_node = next((n for n in all_nodes if n._id == symmetric_id), None)
             if symmetric_node:
-                selected_left_nodes.append(symmetric_node)
+                selected_right_nodes.append(symmetric_node)
             else:
                 print(f"对称节点 ID: {symmetric_id} 不存在于 all_nodes 中")
         else:
             print(f"无法为节点 ID {node._id} 生成对称 ID")
 
+    # 从对称面上的 all_nodes 中均匀选点
+    selected_plane_nodes = select_uniform_nodes(plane_nodes, total_plane_num)
+
     # 输出调试信息
-    print(f"选中右侧对称点 ID: {[node._id for node in selected_right_nodes]}")  # 调整输出信息
-    print(f"选中左侧对称点 ID: {[node._id for node in selected_left_nodes]}")  # 调整输出信息
+    print(f"选中右侧对称点 ID: {[node._id for node in selected_right_nodes]}")
+    print(f"选中左侧对称点 ID: {[node._id for node in selected_left_nodes]}")
+    print(f"选中对称面点 ID: {[node._id for node in selected_plane_nodes]}")
 
-    # 合并左右两侧的点
-    selected_symmetric_nodes = selected_right_nodes + selected_left_nodes  # 按新的命名合并
+    # 合并左右点和对称面点
+    selected_symmetric_nodes = selected_right_nodes + selected_left_nodes + selected_plane_nodes
 
-    # 返回最终结果（左右两侧点合并）
+    # 返回最终结果（左右两侧点和对称面点合并）
     return selected_symmetric_nodes

@@ -2,19 +2,12 @@ import numpy as np
 from utils_node import *
 from scipy.spatial import cKDTree
 
-def laplacian_smoothing(pids, boundary_sets=None, iterations=1, alpha=0.5):
+def laplacian_smoothing(pids, iterations=1, alpha=0.5):
     """
-    对指定 PID 区域的网格进行拉普拉斯平滑，并结合边界保护和动态权重的控制。
+    对指定 PID 区域的网格进行拉普拉斯平滑，并结合自动边界检测和动态权重的控制。
     
-    # 用户可配置部分
-    pids = ["89200701"]  # 平滑的 PID 区域
-    boundary_sets = ["22", "20"]  # 边界保护的 Set ID 列表//=None
-    iterations = 10  # 平滑迭代次数
-    alpha = 0.5  # 边界节点初始移动权重
-    
-    参数:
+    参数：
         pids (str or list): 单个 PID（字符串）或多个 PID 的列表，指定需要平滑的区域。
-        boundary_sets (list or None): 边界节点的 Set ID 列表，用于构建边界点。如果为 None，则没有边界保护。
         iterations (int): 平滑迭代次数。
         alpha (float): 初始边界节点移动权重因子，范围为 0 到 1。
         
@@ -27,6 +20,7 @@ def laplacian_smoothing(pids, boundary_sets=None, iterations=1, alpha=0.5):
     # 获取节点和单元信息
     unique_nodes = {}
     elements_info = []
+    edge_count = {}
 
     for pid in pids:
         section_shell = base.GetEntity(constants.LSDYNA, "SECTION_SHELL", int(pid))
@@ -41,23 +35,21 @@ def laplacian_smoothing(pids, boundary_sets=None, iterations=1, alpha=0.5):
                     element_nodes.append(node._id)
             elements_info.append(element_nodes)
 
+            # 统计边的出现次数
+            edges = [
+                (element_nodes[i], element_nodes[(i + 1) % len(element_nodes)])
+                for i in range(len(element_nodes))
+            ]
+            for edge in edges:
+                edge = tuple(sorted(edge))  # 确保边的方向一致
+                edge_count[edge] = edge_count.get(edge, 0) + 1
+
     ids = list(unique_nodes.keys())
     coords = np.array([node.position for node in unique_nodes.values()])
     nodes = list(unique_nodes.values())
     N = len(coords)
     adjacency = {i: set() for i in range(N)}
     id_to_index = {node_id: idx for idx, node_id in enumerate(ids)}
-
-    # 获取边界点
-    if boundary_sets:
-        boundary_nodes = get_nodes_from_set(boundary_sets)
-        boundary_points = np.array([[node._id] + list(node.position) for node in boundary_nodes])
-        boundary_ids = set(boundary_points[:, 0].astype(int))
-        boundary_coords = boundary_points[:, 1:]
-        boundary_tree = cKDTree(boundary_coords)
-    else:
-        boundary_ids = set()
-        boundary_tree = None
 
     # 构建邻接表
     for element in elements_info:
@@ -67,6 +59,14 @@ def laplacian_smoothing(pids, boundary_sets=None, iterations=1, alpha=0.5):
                     if i != j and neighbor_id in id_to_index:
                         adjacency[id_to_index[node_id]].add(id_to_index[neighbor_id])
 
+    # 自动检测边界点
+    boundary_ids = set()
+    for edge, count in edge_count.items():
+        if count == 1:  # 如果边只出现一次，说明是边界边
+            boundary_ids.update(edge)
+
+    print(f"检测到的边界点 ID: {sorted(boundary_ids)}")
+
     # 平滑部分
     for iteration in range(iterations):
         new_coords = coords.copy()
@@ -74,12 +74,9 @@ def laplacian_smoothing(pids, boundary_sets=None, iterations=1, alpha=0.5):
             neighbors = list(adjacency[i])
             if len(neighbors) > 0:
                 smooth_position = coords[neighbors].mean(axis=0)
-                if ids[i] in boundary_ids and boundary_tree:
-                    _, dist_to_boundary = boundary_tree.query(coords[i])
-                    distance_weight = min(1.0, dist_to_boundary / 5.0)
+                if ids[i] in boundary_ids:
                     dynamic_weight = alpha / (iteration + 1)
-                    weight = distance_weight * dynamic_weight
-                    new_coords[i] = weight * smooth_position + (1 - weight) * coords[i]
+                    new_coords[i] = dynamic_weight * smooth_position + (1 - dynamic_weight) * coords[i]
                 else:
                     new_coords[i] = smooth_position
         coords = new_coords

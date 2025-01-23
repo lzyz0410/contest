@@ -11,6 +11,7 @@ import pandas as pd
 from utils_data import *
 from utils_node import *
 from utils_rbf_transform import *
+from utils_reflect import *
 
 
 #命名规则ansa实体对象用nodes;np.array含id和坐标用points
@@ -93,3 +94,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    reflect(run_all_rules=True)

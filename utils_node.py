@@ -66,13 +66,46 @@ def get_nodes_from_ids(node_ids):
     return nodes  # 返回节点实体对象列表
 
 
-def get_nodes_from_pids(pids, deck=constants.LSDYNA):
+# def get_nodes_from_pids(pids, deck=constants.LSDYNA):
+#     """
+#     根据单个或多个 PID 获取节点实体对象。
+
+#     参数：
+#         pids (str or list): 单个 PID（字符串）或多个 PID 的列表。
+#         deck: 求解器类型，默认为 LS-DYNA。
+
+#     返回：
+#         list: 包含节点实体对象的列表。
+#     """
+#     if isinstance(pids, str):  # 如果是单个 PID，转换为列表
+#         pids = [pids]
+
+#     unique_nodes = {}  # 用于去重的字典，key 为 node_id，value 为节点实体
+
+#     for pid in pids:
+#         # 获取 SECTION_SHELL
+#         section_shell = base.GetEntity(deck, "SECTION_SHELL", int(pid))
+#         # 获取 ELEMENT_SHELL
+#         elements = base.CollectEntities(deck, [section_shell], "ELEMENT_SHELL", recursive=True)
+#         # 提取节点
+#         for element in elements:
+#             node_values = element.get_entity_values(deck, ["N1", "N2", "N3", "N4"])
+#             for node in node_values.values():
+#                 if isinstance(node, base.Entity):  # 确保是节点实体
+#                     if node._id not in unique_nodes:
+#                         unique_nodes[node._id] = node
+
+#     return list(unique_nodes.values())  # 返回节点实体对象列表
+
+def get_nodes_from_pids(pids, deck=constants.LSDYNA, filter_by_prefix=False):
     """
     根据单个或多个 PID 获取节点实体对象。
+    如果 filter_by_prefix 为 True 且节点 ID 的前两位不唯一，则保留数量最多的前缀对应的节点。
 
     参数：
         pids (str or list): 单个 PID（字符串）或多个 PID 的列表。
         deck: 求解器类型，默认为 LS-DYNA。
+        filter_by_prefix (bool): 是否根据节点 ID 的前两位进行过滤，默认为 False。
 
     返回：
         list: 包含节点实体对象的列表。
@@ -81,6 +114,7 @@ def get_nodes_from_pids(pids, deck=constants.LSDYNA):
         pids = [pids]
 
     unique_nodes = {}  # 用于去重的字典，key 为 node_id，value 为节点实体
+    prefix_count = {}  # 统计每种前缀的节点数量
 
     for pid in pids:
         # 获取 SECTION_SHELL
@@ -94,8 +128,41 @@ def get_nodes_from_pids(pids, deck=constants.LSDYNA):
                 if isinstance(node, base.Entity):  # 确保是节点实体
                     if node._id not in unique_nodes:
                         unique_nodes[node._id] = node
+                        # 统计前缀
+                        prefix = str(node._id)[:2]  # 取前两位作为前缀
+                        if prefix in prefix_count:
+                            prefix_count[prefix] += 1
+                        else:
+                            prefix_count[prefix] = 1
 
-    return list(unique_nodes.values())  # 返回节点实体对象列表
+    # 如果不需要根据前缀过滤，直接返回所有节点
+    if not filter_by_prefix:
+        print("未启用前缀过滤，返回所有节点")
+        return list(unique_nodes.values())
+
+    # 判断前缀是否唯一
+    if len(prefix_count) == 1:
+        # 如果前缀唯一，直接返回所有节点
+        print("所有节点的前缀相同，无需过滤")
+        return list(unique_nodes.values())
+    else:
+        # 找到最大的数量
+        max_count = max(prefix_count.values())
+        # 找出所有数量等于最大数量的前缀
+        max_prefixes = [prefix for prefix, count in prefix_count.items() if count == max_count]
+
+        if len(max_prefixes) == 1:
+            max_prefix = max_prefixes[0]
+            print(f"前缀不唯一，保留最多的前缀: {max_prefix}, 数量: {prefix_count[max_prefix]}")
+        else:
+            print(f"有多个前缀数量相等且最多: {max_prefixes}, 数量: {max_count}，都将保留")
+
+        # 过滤节点，只保留最多前缀的节点
+        filtered_nodes = [node for node in unique_nodes.values() if str(node._id).startswith(tuple(max_prefixes))]
+        # 提取过滤后的节点 ID 并打印成列表形式
+        filtered_node_ids = [node._id for node in filtered_nodes]
+        print("过滤后的节点 ID 列表：", filtered_node_ids)
+        return filtered_nodes
 
 
 def update_ansa_node_coordinates(transformed_points, all_nodes):
@@ -113,13 +180,13 @@ def update_ansa_node_coordinates(transformed_points, all_nodes):
         coords_tuple = tuple(coords[:3])  # 只取前 3 个坐标，并转换为元组
         node.position = coords_tuple  # 更新节点坐标
 
-def get_all_nodes(method, param1, param2=None):
+def get_all_nodes(method, param1, param2=None, filter_by_prefix=False):
     """
     获取目标节点列表，支持三种方式：
     1. 从 CSV 文件读取 PID 列表。
     2. 直接传入 PID 列表。
     3. 通过 set_id 获取节点。
-    
+
     参数：
         method (str): 获取节点的方式，"csv" / "pids" / "set"。
         param1 (str or list): 
@@ -127,7 +194,8 @@ def get_all_nodes(method, param1, param2=None):
             - 对于 "pids" 方法：PID 列表。
             - 对于 "set" 方法：set_id 列表。
         param2 (str or None): 可选参数，若 `method` 为 "csv"，则为读取的范围（如 "A2:B35"）；否则为 `None`。
-    
+        filter_by_prefix (bool): 是否根据节点 ID 的前两位进行过滤，默认为 False。
+
     返回：
         list: 对应获取方式的目标节点对象列表。
     """
@@ -142,7 +210,7 @@ def get_all_nodes(method, param1, param2=None):
         pid_name_pairs = read_csv_by_two_columns(csv_path, range_str)
         pids = [str(pid).strip() for _, pid in pid_name_pairs]
         #pid_names = {str(pid).strip(): name for name, pid in pid_name_pairs}
-        all_nodes = get_nodes_from_pids(pids)  # 获取对应 PIDs 的所有节点
+        all_nodes = get_nodes_from_pids(pids, filter_by_prefix=filter_by_prefix)  # 获取对应 PIDs 的所有节点
         return all_nodes
 
     elif method == "pid":
@@ -152,7 +220,7 @@ def get_all_nodes(method, param1, param2=None):
         # all_nodes = get_all_nodes("pid", pids)
         '''
         pids = param1
-        all_nodes = get_nodes_from_pids(pids)  # 获取对应 PIDs 的所有节点
+        all_nodes = get_nodes_from_pids(pids, filter_by_prefix=filter_by_prefix)  # 获取对应 PIDs 的所有节点
         return all_nodes
 
     elif method == "set":
