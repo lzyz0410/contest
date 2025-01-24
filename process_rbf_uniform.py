@@ -67,7 +67,8 @@ def process_nodes(nodes_method, nodes_param, filter_by_prefix=False,total_side_n
     # 根据任务需求调用 enforce_coordinate_uniformity
     if enforce_uniformity and enforce_params:
         set_nodes = get_nodes_from_set(enforce_params.get("set_ids", []))  # 获取对称面节点
-        left_nodes = get_all_nodes("pid", enforce_params.get("left_pids", []))  # 通过 PID 获取左侧节点
+        left_pids = enforce_params.get("left_pids", []) or []  # 如果 left_pids 为 None，则返回空列表
+        left_nodes = get_all_nodes("pid", left_pids)
         enforce_coordinate_uniformity(
             set_nodes,
             axis=enforce_params.get("axis", "y"),  # 默认对齐 Y 轴
@@ -149,12 +150,19 @@ def main():
             "nodes_method": "pid",
             "nodes_param": ["87200101", "87700101"],
             "filter_by_prefix": True,  # 根据节点 ID 的前两位进行过滤
-            "total_side_num": 20,  # 左右两侧控制点的总数量
-            "total_plane_num": 8,  # 对称面控制点数量
+            "total_side_num": 30,  # 左右两侧控制点的总数量
+            "total_plane_num": 15,  # 对称面控制点数量
+            "enforce_uniformity": True,  # 调用 enforce_coordinate_uniformity
+            "enforce_params": {  # enforce_coordinate_uniformity 的参数
+                "set_ids": [17],  # 对称面节点的 set ID
+                "left_pids": None,  # 左侧节点的 PID 列表
+                "axis": "o",  
+                "smoothing_factor": 0.5  # 平滑因子
+            },
             "laplacian_smooth": True,  # 调用 laplacian_smoothing
             "laplacian_params": {  # laplacian_smoothing 的参数
                 "node_pids": ["87200101"],  # 需要平滑的节点的 PID 列表
-                "iterations": 15,  # 迭代次数
+                "iterations": 2,  # 迭代次数
                 "alpha": 0  # alpha 值
             },
             "run_reflect": True,  # 运行 reflect
@@ -187,6 +195,13 @@ def main():
             "nodes_param": ["83200101", "83700101"],
             "total_side_num": 20,  # 左右两侧控制点的总数量
             "total_plane_num": 10,  # 对称面控制点数量
+            "enforce_uniformity": True,  # 调用 enforce_coordinate_uniformity
+            "enforce_params": {  # enforce_coordinate_uniformity 的参数
+                "set_ids": [15],  # 对称面节点的 set ID
+                "left_pids": ["83200101"],  # 左侧节点的 PID 列表
+                "axis": "z",  # 对齐 z 轴
+                "smoothing_factor": 0.5  # 平滑因子
+            },
             "laplacian_smooth": True,  # 调用 laplacian_smoothing
             "laplacian_params": {  # laplacian_smoothing 的参数
                 "node_pids": ["83200101"],  # 需要平滑的节点的 PID 列表
@@ -196,12 +211,19 @@ def main():
             "run_reflect": True,  # 运行 reflect
             "reflect_rules": ["臀部规则"]  # 指定需要执行的规则
         },
-        {
+        { #大腿
             "nodes_method": "pid",
             "nodes_param": ["82200001", "81200001"],
             "filter_by_prefix": True,  # 根据节点 ID 的前两位进行过滤
             "total_side_num": 40,  # 左右两侧控制点的总数量
             "total_plane_num": 0,  # 对称面控制点数量
+            "enforce_uniformity": True,  # 调用 enforce_coordinate_uniformity
+            "enforce_params": {  # enforce_coordinate_uniformity 的参数
+                "set_ids": [14],  # 对称面节点的 set ID
+                "left_pids": ["82200001"],  # 左侧节点的 PID 列表
+                "axis": "z",  # 对齐 z 轴
+                "smoothing_factor": 0.5  # 平滑因子
+            },
             "laplacian_smooth": True,  # 调用 laplacian_smoothing
             "laplacian_params": {  # laplacian_smoothing 的参数
                 "node_pids": ["82200001"],  # 需要平滑的节点的 PID 列表
@@ -211,28 +233,77 @@ def main():
             "run_reflect": True,  # 运行 reflect
             "reflect_rules": ["腿部规则"]  # 指定需要执行的规则
         },
-        {
+        { #膝盖
             "nodes_method": "pid",
-            "nodes_param": ["82200401", "82200601","81200401", "81200601"],
+            "nodes_param": ["82200401","81200401"],
             "total_side_num": 200,  # 左右两侧控制点的总数量
             "total_plane_num": 0,  # 对称面控制点数量
+            "enforce_uniformity": True,  # 调用 enforce_coordinate_uniformity
+            "enforce_params": {  # enforce_coordinate_uniformity 的参数
+                "set_ids": [12],  # 对称面节点的 set ID
+                "left_pids": ["82200401"],  # 左侧节点的 PID 列表
+                "axis": "z",  # 对齐 z 轴
+                "smoothing_factor": 0.5  # 平滑因子
+            },
             "laplacian_smooth": True,  # 调用 laplacian_smoothing
             "laplacian_params": {  # laplacian_smoothing 的参数
-                "node_pids": ["82200401", "82200601"],  # 需要平滑的节点的 PID 列表
-                "iterations": 1,  # 迭代次数
+                "node_pids": ["82200401"],  # 需要平滑的节点的 PID 列表
+                "iterations": 5,  # 迭代次数
                 "alpha": 0  # alpha 值
             },
             "run_reflect": True,  # 运行 reflect
             "reflect_rules": ["腿部规则"]  # 指定需要执行的规则
         },
-        {
+        { #小腿
             "nodes_method": "pid",
-            "nodes_param": ["82201101", "82201301","81201101", "81201301"],
-            "total_side_num": 200,  # 左右两侧控制点的总数量
+            "nodes_param": ["82200601","81200601"],
+            "total_side_num": 100,  # 左右两侧控制点的总数量
+            "total_plane_num": 0,  # 对称面控制点数量
+            "enforce_uniformity": True,  # 调用 enforce_coordinate_uniformity
+            "enforce_params": {  # enforce_coordinate_uniformity 的参数
+                "set_ids": [10],  # 对称面节点的 set ID
+                "left_pids": ["82200601"],  # 左侧节点的 PID 列表
+                "axis": "z",  # 对齐 z 轴
+                "smoothing_factor": 0.5  # 平滑因子
+            },
+            "laplacian_smooth": True,  # 调用 laplacian_smoothing
+            "laplacian_params": {  # laplacian_smoothing 的参数
+                "node_pids": ["82200601"],  # 需要平滑的节点的 PID 列表
+                "iterations": 5,  # 迭代次数
+                "alpha": 0  # alpha 值
+            },
+            "run_reflect": True,  # 运行 reflect
+            "reflect_rules": ["腿部规则"]  # 指定需要执行的规则
+        },
+        { #脚踝
+            "nodes_method": "pid",
+            "nodes_param": ["82201101","81201101"],
+            "total_side_num": 50,  # 左右两侧控制点的总数量
+            "total_plane_num": 0,  # 对称面控制点数量
+            "enforce_uniformity": True,  # 调用 enforce_coordinate_uniformity
+            "enforce_params": {  # enforce_coordinate_uniformity 的参数
+                "set_ids": [8],  # 对称面节点的 set ID
+                "left_pids": ["82201101"],  # 左侧节点的 PID 列表
+                "axis": "z",  # 对齐 z 轴
+                "smoothing_factor": 0.5  # 平滑因子
+            },
+            "laplacian_smooth": True,  # 调用 laplacian_smoothing
+            "laplacian_params": {  # laplacian_smoothing 的参数
+                "node_pids": ["82201101"],  # 需要平滑的节点的 PID 列表
+                "iterations": 5,  # 迭代次数
+                "alpha": 0  # alpha 值
+            },
+            "run_reflect": True,  # 运行 reflect
+            "reflect_rules": ["腿部规则"]  # 指定需要执行的规则
+        },
+        { #脚
+            "nodes_method": "pid",
+            "nodes_param": ["82201301", "81201301"],
+            "total_side_num": 80,  # 左右两侧控制点的总数量
             "total_plane_num": 0,  # 对称面控制点数量
             "laplacian_smooth": True,  # 调用 laplacian_smoothing
             "laplacian_params": {  # laplacian_smoothing 的参数
-                "node_pids": ["82201101", "82201301"],  # 需要平滑的节点的 PID 列表
+                "node_pids": ["82201301"],  # 需要平滑的节点的 PID 列表
                 "iterations": 1,  # 迭代次数
                 "alpha": 0  # alpha 值
             },
@@ -242,37 +313,93 @@ def main():
         {
             "nodes_method": "pid",
             "nodes_param": ["89200701", "89700701"],
-            "total_side_num": 100,  # 左右两侧控制点的总数量
+            "total_side_num": 300,  # 左右两侧控制点的总数量
             "total_plane_num": 0,  # 对称面控制点数量
+            "enforce_uniformity": True,  # 调用 enforce_coordinate_uniformity
+            "enforce_params": {  # enforce_coordinate_uniformity 的参数
+                "set_ids": [20],  # 对称面节点的 set ID
+                "left_pids": None,  # 左侧节点的 PID 列表
+                "axis": "o",  
+                "smoothing_factor": 0.5  # 平滑因子
+            },
             "laplacian_smooth": True,  # 调用 laplacian_smoothing
             "laplacian_params": {  # laplacian_smoothing 的参数
                 "node_pids": ["89200701"],  # 需要平滑的节点的 PID 列表
-                "iterations": 15,  # 迭代次数
+                "iterations":10,  # 迭代次数
                 "alpha": 0  # alpha 值
             },
             "run_reflect": True,  # 运行 reflect
             "reflect_rules": ["肩膀规则"]  # 指定需要执行的规则
         }, 
-        {
+        { #大臂
             "nodes_method": "pid",
-            "nodes_param": ["86200001", "86200301", "86200501","85200001", "85200301", "85200501"],
+            "nodes_param": ["86200001","85200001"],
             "filter_by_prefix": True,  # 根据节点 ID 的前两位进行过滤
             "total_side_num": 200,  # 左右两侧控制点的总数量
             "total_plane_num": 0,  # 对称面控制点数量
+            "enforce_uniformity": True,  # 调用 enforce_coordinate_uniformity
+            "enforce_params": {  # enforce_coordinate_uniformity 的参数
+                "set_ids": [22],  # 对称面节点的 set ID
+                "left_pids": None,  # 左侧节点的 PID 列表
+                "axis": "o",  
+                "smoothing_factor": 0.5  # 平滑因子
+            },
             "laplacian_smooth": True,  # 调用 laplacian_smoothing
             "laplacian_params": {  # laplacian_smoothing 的参数
-                "node_pids": ["86200001", "86200301", "86200501"],  # 需要平滑的节点的 PID 列表
+                "node_pids": ["86200001"],  # 需要平滑的节点的 PID 列表
                 "iterations": 1,  # 迭代次数
                 "alpha": 0  # alpha 值
             },
             "run_reflect": True,  # 运行 reflect
             "reflect_rules": ["手臂规则"]  # 指定需要执行的规则
         },
-        {
+        {#肘关节
             "nodes_method": "pid",
-            "nodes_param": ["86200801", "86201001","85200801", "85201001"],
+            "nodes_param": ["86200301", "85200301"],
+            "total_side_num": 50,  # 左右两侧控制点的总数量
+            "total_plane_num": 0,  # 对称面控制点数量
+            "enforce_uniformity": True,  # 调用 enforce_coordinate_uniformity
+            "enforce_params": {  # enforce_coordinate_uniformity 的参数
+                "set_ids": [24],  # 对称面节点的 set ID
+                "left_pids": None,  # 左侧节点的 PID 列表
+                "axis": "o",  
+                "smoothing_factor": 0.5  # 平滑因子
+            },
+            "laplacian_smooth": True,  # 调用 laplacian_smoothing
+            "laplacian_params": {  # laplacian_smoothing 的参数
+                "node_pids": ["86200301"],  # 需要平滑的节点的 PID 列表
+                "iterations": 1,  # 迭代次数
+                "alpha": 0  # alpha 值
+            },
+            "run_reflect": True,  # 运行 reflect
+            "reflect_rules": ["手臂规则"]  # 指定需要执行的规则
+        },
+        {#小臂
+            "nodes_method": "pid",
+            "nodes_param": ["86200501", "85200501"],
+            "total_side_num": 50,  # 左右两侧控制点的总数量
+            "total_plane_num": 0,  # 对称面控制点数量
+            "laplacian_smooth": True,  # 调用 laplacian_smoothing
+            "laplacian_params": {  # laplacian_smoothing 的参数
+                "node_pids": ["86200501"],  # 需要平滑的节点的 PID 列表
+                "iterations": 1,  # 迭代次数
+                "alpha": 0  # alpha 值
+            },
+            "run_reflect": True,  # 运行 reflect
+            "reflect_rules": ["手臂规则"]  # 指定需要执行的规则
+        },
+        {#踝手
+            "nodes_method": "pid",
+            "nodes_param": ["86200801","86201001","85201001","85200801"],
             "total_side_num": 100,  # 左右两侧控制点的总数量
             "total_plane_num": 0,  # 对称面控制点数量
+            # "enforce_uniformity": True,  # 调用 enforce_coordinate_uniformity
+            # "enforce_params": {  # enforce_coordinate_uniformity 的参数
+            #     "set_ids": [27],  # 对称面节点的 set ID
+            #     "left_pids": None,  # 左侧节点的 PID 列表
+            #     "axis": "o",  
+            #     "smoothing_factor": 0.5  # 平滑因子
+            # },
             # "laplacian_smooth": True,  # 调用 laplacian_smoothing
             # "laplacian_params": {  # laplacian_smoothing 的参数
             #     "node_pids": ["86200801", "86201001"],  # 需要平滑的节点的 PID 列表
