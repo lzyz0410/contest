@@ -65,7 +65,7 @@ def laplacian_smoothing(pids, iterations=1, alpha=0.5):
         if count == 1:  # 如果边只出现一次，说明是边界边
             boundary_ids.update(edge)
 
-    print(f"检测到的边界点 ID: {sorted(boundary_ids)}")
+    #print(f"检测到的边界点 ID: {sorted(boundary_ids)}")
 
     # 平滑部分
     for iteration in range(iterations):

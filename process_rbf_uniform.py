@@ -212,7 +212,7 @@ def main():
             "reflect_rules": ["臀部规则"]  # 指定需要执行的规则
         },
         { #大腿
-            "nodes_method": "pid",
+            "nodes_method": "pid",  #
             "nodes_param": ["82200001", "81200001"],
             "filter_by_prefix": True,  # 根据节点 ID 的前两位进行过滤
             "total_side_num": 40,  # 左右两侧控制点的总数量
@@ -388,27 +388,27 @@ def main():
             "run_reflect": True,  # 运行 reflect
             "reflect_rules": ["手臂规则"]  # 指定需要执行的规则
         },
-        {#踝手
-            "nodes_method": "pid",
-            "nodes_param": ["86200801","86201001","85201001","85200801"],
-            "total_side_num": 100,  # 左右两侧控制点的总数量
-            "total_plane_num": 0,  # 对称面控制点数量
-            # "enforce_uniformity": True,  # 调用 enforce_coordinate_uniformity
-            # "enforce_params": {  # enforce_coordinate_uniformity 的参数
-            #     "set_ids": [27],  # 对称面节点的 set ID
-            #     "left_pids": None,  # 左侧节点的 PID 列表
-            #     "axis": "o",  
-            #     "smoothing_factor": 0.5  # 平滑因子
-            # },
-            # "laplacian_smooth": True,  # 调用 laplacian_smoothing
-            # "laplacian_params": {  # laplacian_smoothing 的参数
-            #     "node_pids": ["86200801", "86201001"],  # 需要平滑的节点的 PID 列表
-            #     "iterations": 1,  # 迭代次数
-            #     "alpha": 0  # alpha 值
-            # },
-            # "run_reflect": True,  # 运行 reflect
-            # "reflect_rules": ["手臂规则"]  # 指定需要执行的规则
-        },
+        # {#踝手
+        #     "nodes_method": "pid",
+        #     "nodes_param": ["86200801","86201001","85201001","85200801"],
+        #     "total_side_num": 100,  # 左右两侧控制点的总数量
+        #     "total_plane_num": 0,  # 对称面控制点数量
+        #     # "enforce_uniformity": True,  # 调用 enforce_coordinate_uniformity
+        #     # "enforce_params": {  # enforce_coordinate_uniformity 的参数
+        #     #     "set_ids": [27],  # 对称面节点的 set ID
+        #     #     "left_pids": None,  # 左侧节点的 PID 列表
+        #     #     "axis": "o",  
+        #     #     "smoothing_factor": 0.5  # 平滑因子
+        #     # },
+        #     # "laplacian_smooth": True,  # 调用 laplacian_smoothing
+        #     # "laplacian_params": {  # laplacian_smoothing 的参数
+        #     #     "node_pids": ["86200801", "86201001"],  # 需要平滑的节点的 PID 列表
+        #     #     "iterations": 1,  # 迭代次数
+        #     #     "alpha": 0  # alpha 值
+        #     # },
+        #     # "run_reflect": True,  # 运行 reflect
+        #     # "reflect_rules": ["手臂规则"]  # 指定需要执行的规则
+        # },
     ]
 
     for config in batch_configs:
@@ -429,4 +429,8 @@ def main():
 
 
 if __name__ == '__main__':
+    start_time = time.time()
     main()
+    reflect(run_all_rules=True)
+    end_time = time.time()
+    print(f"所有处理完成，耗时: {end_time - start_time:.2f} s")

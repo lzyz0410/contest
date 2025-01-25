@@ -108,7 +108,7 @@ def get_control_points4(all_points, rotated_all_points, control_fixed_method, co
     if uniform_fixed_node_count is not None:
         fixed_control_nodes = select_uniform_nodes(fixed_control_nodes, uniform_fixed_node_count)
         fixed_points = np.array([[node._id] + list(node.position) for node in fixed_control_nodes])
-    print(f"固定控制点ID: {[node._id for node in fixed_control_nodes]}")
+    #print(f"固定控制点ID: {[node._id for node in fixed_control_nodes]}")
 
     # 获取运动控制点
     moving_control_nodes = get_all_nodes(control_moving_method, control_moving_param)
@@ -126,7 +126,7 @@ def get_control_points4(all_points, rotated_all_points, control_fixed_method, co
                                         for node in moving_control_nodes])
         moving_target_points = np.array([[node._id] + list(rotated_all_points[rotated_all_points[:, 0] == node._id][0, 1:])
                                         for node in moving_control_nodes])
-    print(f"运动控制点ID: {[node._id for node in moving_control_nodes]}")
+    #print(f"运动控制点ID: {[node._id for node in moving_control_nodes]}")
 
     # 合并固定和运动控制点
     source_control_points = np.vstack([fixed_points, moving_source_points])
@@ -158,9 +158,6 @@ def main(params):
     # 获取核函数配置
     kernel = params.get('kernel', None)  # 默认使用薄板样条
     kernel_params = params.get('kernel_params', {})  # 获取其他核函数参数
-
-    # 记录总的开始时间
-    start_time = time.time()
 
     # 计算几何中心
     print("计算几何中心...")
@@ -218,29 +215,51 @@ def main(params):
             reflect(run_all_rules=True)
         print("reflect 运行完成")
 
-    # 打印运行时间
-    end_time = time.time()
-    print(f"总运行时间: {end_time - start_time:.2f} s")
 
 
-# #Elbow
-# params_elbow = {
-#     'motion_method': "pid",
-#     'motion_param': ["86200501", "86200801", "86201001"],
-#     'rotation_angle': -20,
-#     'rotate_axis': [0, 1, 0],
-#     'center_set_ids': ["32"],
-#     'control_fixed_method': "pid",
-#     'control_fixed_param': ["86200001"],
-#     'control_moving_method': "pid",
-#     'control_moving_param': ["86200501"],
-#     'boundary_set_ids': ["24", "26"],
-#     'transition_method': "pid",
-#     'transition_param': ["86200301"],
-#     'uniform_fixed_node_count': None,  # 选择50个固定控制点   
-#     'uniform_moving_node_count': 50  # 不筛选运动控制点
-# }
-# main(params_elbow)
+# 记录总的开始时间
+start_time = time.time()
+#wrist
+params_wrist = {
+    'motion_method': "pid",
+    'motion_param': ["86201001"],
+    'rotation_angle': 30,
+    'rotate_axis': [0, 0, 1],
+    'center_set_ids': ["33"],
+    'control_fixed_method': "pid",
+    'control_fixed_param': ["86200501"],
+    'control_moving_method': "pid",
+    'control_moving_param': ["86201001"],
+    'boundary_set_ids': ["27", "28"],
+    'transition_method': "pid",
+    'transition_param': ["86200801"],    
+    'uniform_fixed_node_count': None,  # 选择50个固定控制点   
+    'uniform_moving_node_count': None,  # 不筛选运动控制点
+    'run_reflect': True,  # 是否执行反射变换
+    'reflect_rules':["手臂规则"]
+}
+main(params_wrist)
+
+#Elbow
+params_elbow = {
+    'motion_method': "pid",
+    'motion_param': ["86200501", "86200801", "86201001"],
+    'rotation_angle': -20,
+    'rotate_axis': [0, 1, 0],
+    'center_set_ids': ["32"],
+    'control_fixed_method': "pid",
+    'control_fixed_param': ["86200001"],
+    'control_moving_method': "pid",
+    'control_moving_param': ["86200501"],
+    'boundary_set_ids': ["24", "26"],
+    'transition_method': "pid",
+    'transition_param': ["86200301"],
+    'uniform_fixed_node_count': None,  # 选择50个固定控制点   
+    'uniform_moving_node_count': 50,  # 不筛选运动控制点
+    'run_reflect': True,  # 是否执行反射变换
+    'reflect_rules':["手臂规则"]
+}
+main(params_elbow)
 
 # Shoulder
 params_shoulder = {
@@ -264,5 +283,8 @@ params_shoulder = {
 # 调用main函数，只需要传递封装的参数字典
 main(params_shoulder)
 
-#laplacian_smoothing(pids=["89200701"], iterations=10, alpha=0.01)
-
+laplacian_smoothing(pids=["89200701"], iterations=10, alpha=0.01)
+reflect(rules_to_run=["手臂规则", "肩膀规则"])
+# 打印运行时间
+end_time = time.time()
+print(f"总运行时间: {end_time - start_time:.2f} s")

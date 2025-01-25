@@ -33,8 +33,7 @@ def get_control_points1(control_points_csv_path):
     target_control_points = np.array([[node._id] + list(node.position) for node in target_control_nodes])
     return source_control_points, target_control_points
 
-def main():
-    start_time = time.time()    # 定义多个 control_points_csv_path
+def main():   
 
     #根据配置获取目标节点
     nodes_method = "csv"  # 获取节点的方式：从 CSV 获取 PID 列表
@@ -69,8 +68,7 @@ def main():
     # update_ansa_node_coordinates(transformed_all_points, all_nodes)
 
 
-    end_time = time.time()
-    print(f"所有处理完成，耗时: {end_time - start_time:.2f} s")
+
 
 
     # #test
@@ -93,5 +91,8 @@ def main():
 
 
 if __name__ == "__main__":
+    start_time = time.time() 
     main()
     reflect(run_all_rules=True)
+    end_time = time.time()
+    print(f"所有处理完成，耗时: {end_time - start_time:.2f} s")

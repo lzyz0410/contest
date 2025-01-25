@@ -66,37 +66,6 @@ def get_nodes_from_ids(node_ids):
     return nodes  # 返回节点实体对象列表
 
 
-# def get_nodes_from_pids(pids, deck=constants.LSDYNA):
-#     """
-#     根据单个或多个 PID 获取节点实体对象。
-
-#     参数：
-#         pids (str or list): 单个 PID（字符串）或多个 PID 的列表。
-#         deck: 求解器类型，默认为 LS-DYNA。
-
-#     返回：
-#         list: 包含节点实体对象的列表。
-#     """
-#     if isinstance(pids, str):  # 如果是单个 PID，转换为列表
-#         pids = [pids]
-
-#     unique_nodes = {}  # 用于去重的字典，key 为 node_id，value 为节点实体
-
-#     for pid in pids:
-#         # 获取 SECTION_SHELL
-#         section_shell = base.GetEntity(deck, "SECTION_SHELL", int(pid))
-#         # 获取 ELEMENT_SHELL
-#         elements = base.CollectEntities(deck, [section_shell], "ELEMENT_SHELL", recursive=True)
-#         # 提取节点
-#         for element in elements:
-#             node_values = element.get_entity_values(deck, ["N1", "N2", "N3", "N4"])
-#             for node in node_values.values():
-#                 if isinstance(node, base.Entity):  # 确保是节点实体
-#                     if node._id not in unique_nodes:
-#                         unique_nodes[node._id] = node
-
-#     return list(unique_nodes.values())  # 返回节点实体对象列表
-
 def get_nodes_from_pids(pids, deck=constants.LSDYNA, filter_by_prefix=False):
     """
     根据单个或多个 PID 获取节点实体对象。
@@ -161,7 +130,7 @@ def get_nodes_from_pids(pids, deck=constants.LSDYNA, filter_by_prefix=False):
         filtered_nodes = [node for node in unique_nodes.values() if str(node._id).startswith(tuple(max_prefixes))]
         # 提取过滤后的节点 ID 并打印成列表形式
         filtered_node_ids = [node._id for node in filtered_nodes]
-        print("过滤后的节点 ID 列表：", filtered_node_ids)
+        #print("过滤后的节点 ID 列表：", filtered_node_ids)
         return filtered_nodes
 
 

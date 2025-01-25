@@ -186,7 +186,7 @@ def select_uniform_nodes(all_nodes, num_control_points):
 
     return selected_nodes
 
-def select_symmetric_uniform_nodes(all_nodes, total_side_num, total_plane_num, mapping_file="node_mapping.csv"):
+def select_symmetric_uniform_nodes(all_nodes, total_side_num, total_plane_num, mapping_file="E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\node_mapping.csv"):
     """
     根据对称平面计算均匀分布的对称节点，并动态选择规则找到对应的对称点。
 
@@ -258,7 +258,7 @@ def select_symmetric_uniform_nodes(all_nodes, total_side_num, total_plane_num, m
         side = np.dot(vector_to_plane, normal)
         if abs(side) < 1e-6:  # 对称面上的节点
             plane_nodes.append(source_node)
-        elif side > 0:  # 左侧节点
+        elif side < 0:  # 左侧节点
             left_nodes.append(source_node)
 
     # 从左侧节点中均匀选点
