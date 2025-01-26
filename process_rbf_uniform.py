@@ -44,20 +44,20 @@ def process_nodes(nodes_method, nodes_param, filter_by_prefix=False,total_side_n
     # 判断控制点获取方式
     if total_side_num is not None and total_plane_num is not None:  # 如果提供了左右两侧和对称面的数量
         control_source_nodes = select_symmetric_uniform_nodes(all_nodes, total_side_num, total_plane_num)
-        print(f"使用自动选取的控制点数量: 左右两侧合计 {total_side_num}，对称面 {total_plane_num}")
+        #print(f"使用自动选取的控制点数量: 左右两侧合计 {total_side_num}，对称面 {total_plane_num}")
     elif control_source_param:  # 否则使用指定的 set
         control_source_nodes = get_nodes_from_set(control_source_param)
-        print(f"使用指定 set 的控制点，set ID: {control_source_param}")
+        #print(f"使用指定 set 的控制点，set ID: {control_source_param}")
     else:
         raise ValueError("需要提供 total_side_num 和 total_plane_num 或 control_source_param")
 
     # 转换控制点为 numpy 数组
     control_source_points = np.array([[node._id] + list(node.position) for node in control_source_nodes])
-    print(f"源控制点ID: {control_source_points[:, 0].astype(int).tolist()}")
+    #print(f"源控制点ID: {control_source_points[:, 0].astype(int).tolist()}")
 
     # 根据初始控制点搜索目标控制点
     control_target_points = compute_projection_points(control_source_nodes, target_all_nodes, alpha_selected=0.5)
-    print(f"目标控制点ID: {control_target_points[:, 0].astype(int).tolist()}")
+    #print(f"目标控制点ID: {control_target_points[:, 0].astype(int).tolist()}")
 
     # 执行 RBF 插值变换并更新节点坐标
     all_points = np.array([[node._id] + list(node.position) for node in all_nodes])
@@ -188,8 +188,29 @@ def main():
                 "alpha": 0  # alpha 值
             },
             "run_reflect": True,  # 运行 reflect
-            "reflect_rules": ["胸部规则"]  # 指定需要执行的规则
+            "reflect_rules": ["肩胸规则"]  # 指定需要执行的规则
         },
+        {
+            "nodes_method": "pid",
+            "nodes_param": ["89200701", "89700701"],
+            "total_side_num": 300,  # 左右两侧控制点的总数量
+            "total_plane_num": 0,  # 对称面控制点数量
+            "enforce_uniformity": True,  # 调用 enforce_coordinate_uniformity
+            "enforce_params": {  # enforce_coordinate_uniformity 的参数
+                "set_ids": [20],  # 对称面节点的 set ID
+                "left_pids": None,  # 左侧节点的 PID 列表
+                "axis": "o",  
+                "smoothing_factor": 0.5  # 平滑因子
+            },
+            "laplacian_smooth": True,  # 调用 laplacian_smoothing
+            "laplacian_params": {  # laplacian_smoothing 的参数
+                "node_pids": ["89200701"],  # 需要平滑的节点的 PID 列表
+                "iterations":10,  # 迭代次数
+                "alpha": 0  # alpha 值
+            },
+            "run_reflect": True,  # 运行 reflect
+            "reflect_rules": ["肩胸规则"]  # 指定需要执行的规则
+        },         
         {
             "nodes_method": "pid",
             "nodes_param": ["83200101", "83700101"],
@@ -310,27 +331,6 @@ def main():
             "run_reflect": True,  # 运行 reflect
             "reflect_rules": ["腿部规则"]  # 指定需要执行的规则
         },
-        {
-            "nodes_method": "pid",
-            "nodes_param": ["89200701", "89700701"],
-            "total_side_num": 300,  # 左右两侧控制点的总数量
-            "total_plane_num": 0,  # 对称面控制点数量
-            "enforce_uniformity": True,  # 调用 enforce_coordinate_uniformity
-            "enforce_params": {  # enforce_coordinate_uniformity 的参数
-                "set_ids": [20],  # 对称面节点的 set ID
-                "left_pids": None,  # 左侧节点的 PID 列表
-                "axis": "o",  
-                "smoothing_factor": 0.5  # 平滑因子
-            },
-            "laplacian_smooth": True,  # 调用 laplacian_smoothing
-            "laplacian_params": {  # laplacian_smoothing 的参数
-                "node_pids": ["89200701"],  # 需要平滑的节点的 PID 列表
-                "iterations":10,  # 迭代次数
-                "alpha": 0  # alpha 值
-            },
-            "run_reflect": True,  # 运行 reflect
-            "reflect_rules": ["肩膀规则"]  # 指定需要执行的规则
-        }, 
         { #大臂
             "nodes_method": "pid",
             "nodes_param": ["86200001","85200001"],
@@ -351,7 +351,7 @@ def main():
                 "alpha": 0  # alpha 值
             },
             "run_reflect": True,  # 运行 reflect
-            "reflect_rules": ["手臂规则"]  # 指定需要执行的规则
+            "reflect_rules": ["手部规则"]  # 指定需要执行的规则
         },
         {#肘关节
             "nodes_method": "pid",
@@ -372,7 +372,7 @@ def main():
                 "alpha": 0  # alpha 值
             },
             "run_reflect": True,  # 运行 reflect
-            "reflect_rules": ["手臂规则"]  # 指定需要执行的规则
+            "reflect_rules": ["手部规则"]  # 指定需要执行的规则
         },
         {#小臂
             "nodes_method": "pid",
@@ -386,7 +386,7 @@ def main():
                 "alpha": 0  # alpha 值
             },
             "run_reflect": True,  # 运行 reflect
-            "reflect_rules": ["手臂规则"]  # 指定需要执行的规则
+            "reflect_rules": ["手部规则"]  # 指定需要执行的规则
         },
         # {#踝手
         #     "nodes_method": "pid",
@@ -431,6 +431,6 @@ def main():
 if __name__ == '__main__':
     start_time = time.time()
     main()
-    reflect(run_all_rules=True)
+    reflect(rules_to_run=True)
     end_time = time.time()
     print(f"所有处理完成，耗时: {end_time - start_time:.2f} s")

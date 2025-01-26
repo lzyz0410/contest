@@ -11,7 +11,7 @@ import pandas as pd
 from utils_data import *
 from utils_node import *
 from utils_rbf_transform import *
-from utils_reflect import *
+from utils_reflect import reflect
 
 
 #命名规则ansa实体对象用nodes;np.array含id和坐标用points
@@ -93,6 +93,6 @@ def main():
 if __name__ == "__main__":
     start_time = time.time() 
     main()
-    reflect(run_all_rules=True)
+    reflect(rules_to_run=True)
     end_time = time.time()
     print(f"所有处理完成，耗时: {end_time - start_time:.2f} s")

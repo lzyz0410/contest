@@ -13,7 +13,7 @@ from utils_node import *
 from utils_rbf_transform import *
 from utils_smooth import *
 from scipy.spatial import cKDTree
-from utils_reflect import *
+from utils_reflect import reflect
 
 # 计算点集的几何中心
 def calculate_geometric_center(nodes):
@@ -148,8 +148,6 @@ def main(params):
     transition_method = params['transition_method']
     transition_param = params['transition_param']
     boundary_set_ids = params['boundary_set_ids']
-    run_reflect = params.get('run_reflect', False)  # 是否执行反射变换
-    reflect_rules = params.get('reflect_rules', None)  # 需要执行的 reflect 规则名称列表
 
     # 获取固定控制点的数量（可选），默认为None（即不进行筛选）
     uniform_fixed_node_count = params.get('uniform_fixed_node_count', None)
@@ -204,18 +202,6 @@ def main(params):
     )
     update_ansa_node_coordinates(transformed_points, transition_filtered_nodes)
 
-    # 如果需要运行 reflect 函数
-    if run_reflect:
-        print("开始运行 reflect...")
-        if reflect_rules:
-            # 如果指定了规则，则执行指定的规则
-            reflect(rules_to_run=reflect_rules)
-        else:
-            # 否则执行所有规则
-            reflect(run_all_rules=True)
-        print("reflect 运行完成")
-
-
 
 # 记录总的开始时间
 start_time = time.time()
@@ -235,8 +221,6 @@ params_wrist = {
     'transition_param': ["86200801"],    
     'uniform_fixed_node_count': None,  # 选择50个固定控制点   
     'uniform_moving_node_count': None,  # 不筛选运动控制点
-    'run_reflect': True,  # 是否执行反射变换
-    'reflect_rules':["手臂规则"]
 }
 main(params_wrist)
 
@@ -256,8 +240,6 @@ params_elbow = {
     'transition_param': ["86200301"],
     'uniform_fixed_node_count': None,  # 选择50个固定控制点   
     'uniform_moving_node_count': 50,  # 不筛选运动控制点
-    'run_reflect': True,  # 是否执行反射变换
-    'reflect_rules':["手臂规则"]
 }
 main(params_elbow)
 
@@ -277,14 +259,12 @@ params_shoulder = {
     'transition_param': ["89200701"],
     # 'kernel': 'multiquadric', #可选 'linear'、'cubic'、'gaussian'、'multiquadric'
     # 'kernel_params': {'epsilon': 1}
-    'run_reflect': True,  # 是否执行反射变换
-    'reflect_rules':["手臂规则", "肩膀规则"]
 }
 # 调用main函数，只需要传递封装的参数字典
 main(params_shoulder)
 
 laplacian_smoothing(pids=["89200701"], iterations=10, alpha=0.01)
-reflect(rules_to_run=["手臂规则", "肩膀规则"])
+reflect(rules_to_run=["手部规则","肩胸规则"])
 # 打印运行时间
 end_time = time.time()
 print(f"总运行时间: {end_time - start_time:.2f} s")
