@@ -13,7 +13,6 @@ reflect(rules_to_run=True)
 reflect(rules_to_run=["手臂规则", "腿部规则"])
 '''
 # 缓存变量
-global_reflection_plane = None
 MAPPING_FILE_PATH = "E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\node_mapping.csv"
 mapping = None
 reverse_mapping = None
@@ -89,6 +88,7 @@ def get_reflection_plane_and_separate_nodes(all_nodes):
         load_mapping_file()  # 确保映射文件被加载
 
      # 获取对称面节点
+    enforce_coordinate_uniformity(get_nodes_from_set([3,4,5,6]), axis='y', left_nodes=None, smoothing_factor=0.1)   
     set56_nodes = get_all_nodes("set", ["3", "4", "5", "6"])
     set56_ids = {node._id for node in set56_nodes}  # 提取节点 ID
     REFLECTION_PLANE = (np.array([0, 1, 0]), np.array(set56_nodes[0].position))  # 反射平面

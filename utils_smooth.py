@@ -84,8 +84,7 @@ def laplacian_smoothing(pids, iterations=1, alpha=0.5):
     # 更新 ANSA 中的节点坐标
     smoothed_points = np.column_stack((ids, coords))
     update_ansa_node_coordinates(smoothed_points, nodes)
-
-
+    print(f'完成{pids}平滑')
 
 
 

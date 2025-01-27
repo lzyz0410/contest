@@ -5,6 +5,8 @@ icp_try.py进行尝试效果不好，还是rbf
 
 
 - 将base_control_set.k、target_modi.k和THUMS_AM50_V402_Pedestrian_20150527_no_fracture2.k一起导入ansa
-  - 运行joint_rotate.py旋转左肘关节、左肩关节、并平滑达到近似目标姿态，根据左边手臂节点做对称变换
-  - 运行process_rbf.py将基准体表映射到目标模型，再进行一次全身对称变换
-  - 运行process_rbf_uniform.py将基准体表二次分块映射到目标模型，除了手和手腕，变形太大，还没做
+  - 运行surface_1_joint_rotate.py旋转左肘关节、左肩关节、并平滑达到近似目标姿态，根据左边手臂节点做对称变换
+  - 运行surface_2_process_rbf.py将基准体表映射到目标模型，再进行一次全身对称变换
+  - 运行surface_3_process_rbf_uniform.py将基准体表二次分块映射到目标模型，除了手和手腕，变形太大，还没做
+  - 运行surface_4_body_smooth.py，将表面进一步平滑对称，后续可以优化utils_smooth算法，平滑多了有向内收缩趋势
+  - 导出surface.k为基准模型映射到目标模型的目标曲面，用于下一步的内部变换。
