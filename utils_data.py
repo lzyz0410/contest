@@ -55,7 +55,7 @@ def read_node_coordinates(input_file, target_nodeids=None):
     
     参数:
         input_file (str): 输入的 .k/.key/.inc 文件路径。
-        target_nodeids (list, optional): 指定的目标节点 ID 列表。如果为 None，则读取所有节点数据。
+        target_nodeids (set, optional): 指定的目标节点 ID 集合。如果为 None，则读取所有节点数据。
     
     返回:
         node_data (np.array): 包含节点 ID 和坐标 (X, Y, Z) 的 NumPy 数组。
@@ -73,15 +73,13 @@ def read_node_coordinates(input_file, target_nodeids=None):
     # 获取 *NODE 块的起始和结束位置
     start_index, end_index = find_block(file_lines, "*NODE")
 
-    # 如果指定了 target_nodeids，只读取这些节点的 ID 和坐标
     if target_nodeids:
-        # 使用 set 来提高查找效率
-        target_nodeids_set = set(map(str.strip, target_nodeids))  # 转为字符串格式以匹配节点 ID
+        # 使用集合进行查找，直接比较整数 ID，提高效率
         node_data = [
             [line.split()[0], *map(float, line.split()[1:4])]  # 提取节点 ID 和坐标
             for line in file_lines[start_index:end_index]
             if line.strip() and not line.startswith('$')  # 跳过空行和注释行
-            and line.split()[0] in target_nodeids_set  # 只读取目标节点 ID
+            and int(line.split()[0]) in target_nodeids  # 直接使用整数进行比较
         ]
     else:
         # 如果没有提供 target_nodeids，读取所有节点数据
@@ -93,6 +91,7 @@ def read_node_coordinates(input_file, target_nodeids=None):
 
     print(f'提取到 {len(node_data)} 个节点.')
     return np.array(node_data, dtype=object), file_lines
+
 
 
 def get_node_ids_by_pid(input_file, pids):

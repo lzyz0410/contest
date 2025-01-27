@@ -155,13 +155,15 @@ def get_all_nodes(method, param1, param2=None, filter_by_prefix=False):
     1. 从 CSV 文件读取 PID 列表。
     2. 直接传入 PID 列表。
     3. 通过 set_id 获取节点。
+    4。通过nodeid获取节点。
 
     参数：
-        method (str): 获取节点的方式，"csv" / "pids" / "set"。
+        method (str): 获取节点的方式，"csv" / "pids" / "set"/"node"。
         param1 (str or list): 
             - 对于 "csv" 方法：CSV 文件路径。
             - 对于 "pids" 方法：PID 列表。
             - 对于 "set" 方法：set_id 列表。
+            - 对于 "node"方法：nodeid列表。
         param2 (str or None): 可选参数，若 `method` 为 "csv"，则为读取的范围（如 "A2:B35"）；否则为 `None`。
         filter_by_prefix (bool): 是否根据节点 ID 的前两位进行过滤，默认为 False。
 
@@ -200,6 +202,12 @@ def get_all_nodes(method, param1, param2=None, filter_by_prefix=False):
         '''
         set_ids = param1
         all_nodes = get_nodes_from_set(set_ids)  # 通过 set_id 获取对应的所有节点
+        return all_nodes
+
+    elif method == "node":
+        # 通过nodeid获取节点  node_ids = ["100","300"]
+        node_ids = param1
+        all_nodes = get_nodes_from_ids(node_ids)  # 通过nodeid获取对应的所有节点
         return all_nodes
 
 
