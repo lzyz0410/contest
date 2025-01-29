@@ -26,6 +26,22 @@ def rbf_transform_3d_chunked(all_points, source_control_points, target_control_p
     返回:
         transformed_points (np.array): 包含变换后坐标和 `node_id` 的数组 (N x 4)，每行 [node_id, x', y', z']。
     """
+    # # 打印 all_points 所有点的 ID 和坐标
+    # print("所有 all_points (ID + X, Y, Z):")
+    # for points in all_points:
+    #     print(f"ID: {int(points[0])}, X: {points[1]:.4f}, Y: {points[2]:.4f}, Z: {points[3]:.4f}")
+    
+    # # 打印 source_control_points 所有点的 ID 和坐标
+    # print("\n所有 source_control_points (ID + X, Y, Z):")
+    # for points in source_control_points:
+    #     print(f"ID: {int(points[0])}, X: {points[1]:.4f}, Y: {points[2]:.4f}, Z: {points[3]:.4f}")
+    
+    # # 打印 target_control_points 所有点的 ID 和坐标
+    # print("\n所有 target_control_points (ID + X, Y, Z):")
+    # for points in target_control_points:
+    #     print(f"ID: {int(points[0])}, X: {points[1]:.4f}, Y: {points[2]:.4f}, Z: {points[3]:.4f}")
+    
+
     def rbf_phi(r, kernel=None, **kwargs):
         """
         根据核函数类型选择径向基函数。
@@ -51,6 +67,14 @@ def rbf_transform_3d_chunked(all_points, source_control_points, target_control_p
             return np.sqrt(1 + (epsilon * r)**2)
         else:
             raise ValueError(f"未知的核函数类型: {kernel}")
+
+        # 确保 all_points, source_control_points 和 target_control_points 是二维数组
+    if len(all_points.shape) == 1:
+        all_points = all_points.reshape(-1, 4)  # 将其变为 (N, 4)
+    if len(source_control_points.shape) == 1:
+        source_control_points = source_control_points.reshape(-1, 4)  # 将其变为 (M, 4)
+    if len(target_control_points.shape) == 1:
+        target_control_points = target_control_points.reshape(-1, 4)  # 将其变为 (M, 4)
 
     # 提取坐标部分，忽略 `node_id`
     all_coords = all_points[:, 1:]  # (N x 3)
