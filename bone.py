@@ -14,57 +14,110 @@ from utils_rbf_transform import *
 
 # 全局字典
 node_id_to_transformed_coords = {}
+# 全局变量，用于存储所有的变换后的节点
+all_transformed_points = []
+input_file = r"E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\output.k"
+output_file = input_file.replace(".k", "_transformed.k")
+file_lines = None
+# 初始化函数：加载表面节点数据和目标坐标
+def initialize_shell_data():
+    global all_shell_points, node_id_to_transformed_coords, file_lines
+    # 1. 获取表面节点和原始坐标
+    nodes_method, nodes_param, range = "csv", "E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\shell_property.csv", "A2:B35"
+    all_shell_nodes = get_all_nodes(nodes_method, nodes_param, range)
+    all_shell_points = np.array([[node._id] + list(node.position) for node in all_shell_nodes])
 
-def project_to_surface_along_x(inner_locating_points, all_shell_points):
+    # 2. 定义 shell_node_data 数组
+    num_shell_nodes = len(all_shell_nodes)
+    shell_node_data = np.empty((num_shell_nodes, 7), dtype=object)
+    shell_node_data[:, 0] = [node._id for node in all_shell_nodes]
+    shell_node_data[:, 1:4] = [node.position for node in all_shell_nodes]
+
+    # 3. 加载目标坐标
+    target_nodeids = set(int(point[0]) for point in all_shell_points)
+    input_file = r"E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\output.k"
+    target_shell_points, file_lines = read_node_coordinates(input_file, target_nodeids)
+
+    # 创建目标节点字典
+    target_node_dict = {int(node_data_point[0]): node_data_point[1:] for node_data_point in target_shell_points}
+
+    # 4. 更新 shell_node_data
+    for idx, node_id in enumerate(shell_node_data[:, 0]):
+        if node_id in target_node_dict:
+            shell_node_data[idx, 4:7] = target_node_dict[node_id]
+
+    # 构建 node_id_to_transformed_coords 字典
+    node_id_to_transformed_coords = {int(row[0]): row[4:7] for row in shell_node_data}
+
+    # 返回所有初始化数据
+    return all_shell_points, node_id_to_transformed_coords, file_lines
+
+def project_and_transform_to_surface(all_shell_points, node_direction_map):
     """
-    将 inner_locating_points 沿着 X 负方向投影到 all_shell_points 所代表的表面。
+    根据投影方向计算每个内部节点的投影外部点和变换后的内部点，并将每个方向的结果合并返回
+    将原本分散的函数逻辑合并为一个函数
     """
-    outer_locating_points = []
-    all_shell_points_x = all_shell_points[:, 1:]
-
-    for loc_point in inner_locating_points:
-        loc_x, loc_y, loc_z = loc_point[1], loc_point[2], loc_point[3]
-
-        # 筛选沿 X 负方向的候选点（X <= loc_x）
-        candidates = all_shell_points[all_shell_points[:, 1] <= loc_x]
-
-        if len(candidates) == 0:
-            nearest = all_shell_points[np.argmin(np.linalg.norm(all_shell_points_x - [loc_x, loc_y, loc_z], axis=1))]
-        else:
-            nearest = candidates[np.argmin(np.linalg.norm(candidates[:, 2:] - [loc_y, loc_z], axis=1))]
-
-        outer_locating_points.append([nearest[0], nearest[1], loc_y, loc_z])
-
-    return np.array(outer_locating_points)
-
-def transform_inner_using_proportions(inner_locating_points, source_control_points, target_control_points):
-    """
-    使用内外定位点的比例关系来推算变换后的内定位点坐标。
-    """
-    # 打印 all_points 所有点的 ID 和坐标
-    print("所有 all_points 原始内部点 (ID + X, Y, Z):")
-    for points in inner_locating_points:
-        print(f"ID: {int(points[0])}, X: {points[1]:.4f}, Y: {points[2]:.4f}, Z: {points[3]:.4f}")
+    inner_locating_points = []  # 存储原始内部定位点
+    outer_locating_points = []  # 存储原始外部定位点
+    transformed_inner_locating_points = []  # 存储变换后的内部定位点
+    transformed_outer_locating_points = []  # 存储变换后的外部定位点
     
-    # 打印 source_control_points 所有点的 ID 和坐标
-    print("\n所有 source_control_points 原始外部点(ID + X, Y, Z):")
-    for points in source_control_points:
-        print(f"ID: {int(points[0])}, X: {points[1]:.4f}, Y: {points[2]:.4f}, Z: {points[3]:.4f}")
-    
-    # 打印 target_control_points 所有点的 ID 和坐标
-    print("\n所有 target_control_points 目标外部点(ID + X, Y, Z):")
-    for points in target_control_points:
-        print(f"ID: {int(points[0])}, X: {points[1]:.4f}, Y: {points[2]:.4f}, Z: {points[3]:.4f}")
+    # 预先过滤并缓存外部点
+    shell_points_by_direction = {
+        'Xnegative': all_shell_points[all_shell_points[:, 1] <= 0],
+        'Xpositive': all_shell_points[all_shell_points[:, 1] >= 0],
+        'Ynegative': all_shell_points[all_shell_points[:, 2] <= 0],
+        'Ypositive': all_shell_points[all_shell_points[:, 2] >= 0],
+        'Znegative': all_shell_points[all_shell_points[:, 3] <= 0],
+        'Zpositive': all_shell_points[all_shell_points[:, 3] >= 0]
+    }
+    # 遍历每个方向
+    for direction, nodes in node_direction_map.items():
+        node_ids = [node[0] for node in nodes]
+        inner_locating_nodes = get_all_nodes("node", node_ids)
+        inner_points = np.array([[node._id] + list(node.position) for node in inner_locating_nodes])
 
-    proportions = (target_control_points[:, 1] - source_control_points[:, 1]) / (inner_locating_points[:, 1] - source_control_points[:, 1])
-    proportions[proportions == np.inf] = 0  # 处理除零情况
+        outer_locating_points_direction = []
+        transformed_outer_points_direction = []
+        transformed_inner_points_direction = []
 
-    transformed_inner_points = np.array([
-        [inner[0], inner[1] + proportions[i] * (inner[1] - source_control_points[i][1]), target_control_points[i][2], target_control_points[i][3]]
-        for i, inner in enumerate(inner_locating_points)
-    ])
+        # 优化：统一计算外部点距离
+        candidates = shell_points_by_direction[direction]
+        for loc_point in inner_points:
+            loc_node_id, loc_x, loc_y, loc_z = loc_point
+            distances = np.linalg.norm(candidates[:, 1:4] - [loc_x, loc_y, loc_z], axis=1)
+            min_idx = np.argmin(distances)
+            nearest = candidates[min_idx]
+            outer_locating_points_direction.append([nearest[0], nearest[1], nearest[2], nearest[3]])
 
-    return transformed_inner_points
+        # 获取变换后的外部点
+        transformed_outer_points_direction = get_target_coordinates(np.array(outer_locating_points_direction))
+
+        # 计算变换后的内部点
+        for inner, outer ,transformed_outer in zip(inner_points, outer_locating_points_direction, transformed_outer_points_direction):
+            loc_node_id, loc_x, loc_y, loc_z = inner
+            outer_node_id, outer_x, outer_y, outer_z = outer
+            transformed_outer_node_id, transformed_outer_x, transformed_outer_y, transformed_outer_z = transformed_outer
+            if direction in ["Xnegative", "Xpositive"]:
+                proportion_x = (transformed_outer_x - outer_x) / (loc_x - outer_x)  
+                transformed_x = loc_x + proportion_x * (loc_x - outer_x)
+                transformed_inner_points_direction.append([loc_node_id, transformed_x, transformed_outer_y, transformed_outer_z])
+            elif direction in ["Ynegative", "Ypositive"]:
+                proportion_y = (transformed_outer_y - outer_y) / (loc_y - outer_y) 
+                transformed_y = loc_y + proportion_y * (loc_y - outer_y)
+                transformed_inner_points_direction.append([loc_node_id, transformed_outer_x, transformed_y, transformed_outer_z])
+            elif direction in ["Znegative", "Zpositive"]:
+                proportion_z = (transformed_outer_z - outer_z) / (loc_z - outer_z) 
+                transformed_z = loc_z + proportion_z * (loc_z - outer_z)
+                transformed_inner_points_direction.append([loc_node_id, transformed_outer_x, transformed_outer_y, transformed_z])
+
+        transformed_outer_locating_points.extend(transformed_outer_points_direction)
+        transformed_inner_locating_points.extend(transformed_inner_points_direction)
+        inner_locating_points.extend(inner_points.tolist())
+        outer_locating_points.extend(outer_locating_points_direction)
+
+    return np.array(inner_locating_points), np.array(outer_locating_points), np.array(transformed_outer_locating_points), np.array(transformed_inner_locating_points)
+
 
 def get_target_coordinates(points):
     """
@@ -86,134 +139,130 @@ def get_target_coordinates(points):
 
     return np.array(target_points, dtype=float)
 
-def transform_target_points(target_select_points, transformed_inner_locating_points):
+
+def process_task(task_settings):
     """
-    将 transformed_inner_locating_points 添加到 target_select_points 中
-    假设 target_select_points 和 transformed_inner_locating_points 的维度可以匹配，
-    但 target_select_points 长度更长。
+    处理单个任务，计算变换后的节点并添加到全局的 all_transformed_points 列表中
     """
-    if not isinstance(target_select_points, np.ndarray):
-        raise TypeError("target_select_points 必须是 numpy 数组")
-    if not isinstance(transformed_inner_locating_points, np.ndarray):
-        raise TypeError("transformed_inner_locating_points 必须是 numpy 数组")
+    # 获取当前任务的设置
+    node_direction_map = task_settings["node_direction_map"]
+    transform_sets = task_settings["transform_sets"]  # 将集合转换为列表
+    source_shell_nodes = task_settings["source_shell_nodes"]  # 假设已经是字符串列表
+    total_side_num = task_settings["total_side_num"]
+    total_plane_num = task_settings["total_plane_num"]
 
-    target_control_points = []
+    # 获取 transform_points, source_select_nodes 等输入
+    transform_nodes = get_all_nodes("set", transform_sets)
+    transform_points = np.array([[node._id] + list(node.position) for node in transform_nodes])
+    source_shell_nodes = get_all_nodes("pid", source_shell_nodes)
+    source_select_nodes =  select_symmetric_uniform_nodes(source_shell_nodes, total_side_num, total_plane_num)
 
-    # 使用 numpy 的 arange 函数替代 range
-    for i in np.arange(target_select_points.shape[0]):
-        target_select_point = target_select_points[i]
-        transformed_inner_point = transformed_inner_locating_points[i % transformed_inner_locating_points.shape[0]]
+    source_select_points = np.array([[node._id] + list(node.position) for node in source_select_nodes])
 
-        if target_select_point.shape[0] != transformed_inner_point.shape[0]:
-            raise ValueError("目标点和变换后的内部定位点的长度不匹配")
+    # 获取目标坐标
+    target_select_points = get_target_coordinates(source_select_points)
 
-        new_point = target_select_point + transformed_inner_point
-        target_control_points.append(new_point)
+    # 获取投影后的内部和外部定位点
+    inner_locating_points, outer_locating_points, transformed_outer_locating_points, transformed_inner_locating_points = project_and_transform_to_surface(all_shell_points, node_direction_map)
 
-    return np.array(target_control_points)
+    # 合并内部、外部和变换后的定位点
+    # 使用 numpy 的 unique 方法去重
 
+    # 合并所有 source points
+    source_all_points = np.vstack([
+        source_select_points,
+        inner_locating_points,
+        outer_locating_points
+    ])
+    # 直接打印所有的 node_id，格式为 int[node_id]
+    print([int(point[0]) for point in source_all_points])
+    # 合并所有 target points
+    target_all_points = np.vstack([
+        target_select_points,
+        transformed_inner_locating_points,
+        transformed_outer_locating_points
+    ])
+    print([int(point[0]) for point in target_all_points])
+    # 使用 numpy.unique 来确保 node_id 不重复
+    _, unique_source_idx = np.unique(source_all_points[:, 0], return_index=True)
+    _, unique_target_idx = np.unique(target_all_points[:, 0], return_index=True)
+
+    source_control_points = source_all_points[unique_source_idx]
+    target_control_points = target_all_points[unique_target_idx]
+    
+    # 进行 RBF 变换
+    transformed_points = rbf_transform_3d_chunked(
+        transform_points,
+        source_control_points,
+        target_control_points,
+        0
+    )
+    print(f"变换后的点数: {transformed_points.shape[0]}")
+
+    # 将变换后的点添加到全局列表中
+    all_transformed_points.append(transformed_points)
+
+
+def write_all_transformed_points():
+    """
+    所有任务完成后，只写入一次所有的变换后的坐标
+    """
+    # 合并所有变换后的坐标
+    all_transformed_points_combined = np.vstack(all_transformed_points)
+    # 写入修改后的坐标
+    write_modified_coordinates(
+        output_file=output_file,
+        file_lines=file_lines,
+        updated_node_data=all_transformed_points_combined
+    )
+    print(f"所有任务完成，修改后的坐标已写入文件: {output_file}")
+
+def run_batch(task_configs):
+    """
+    批量运行多个任务
+    :param task_configs: 每个任务的配置（node_direction_map, transform_sets, etc.）
+    :param file_lines: 输入文件的行数据
+    """
+    all_shell_points,node_id_to_transformed_coords, file_lines =initialize_shell_data()  # 加载表面节点数据和目标坐标
+    
+    # 遍历任务配置，处理每个任务
+    for idx, task_settings in enumerate(task_configs):
+        print(f"开始处理任务 {idx + 1}...")
+        process_task(task_settings)
+
+    # 在所有任务完成后写入合并后的变换结果
+    write_all_transformed_points()
+
+
+# 示例任务配置
+task_configs = [
+    {
+        "node_direction_map": {
+            'Xnegative': [(83010467, 'coccyx'), (89066294, 'Base of sacrum'),(89066279, 'Promontory'),(83012513,'ASIS-left'),(83512514,'ASIS-right'),
+            (89004125,'Manubrium'), (89003192, 'xiphisternum')],
+            'Zpositive': [(89063944, 'T12Am'), (89059500, 'T1Am')],
+            'Xpositive': [(89063788, 'T12Pm'),(89000726,'T1Pm')]
+        },
+        "transform_sets": ["101", "102","103"],
+        "source_shell_nodes": ["83200101", "83700101","89200801","89700801"],
+        "total_side_num": 20,
+        "total_plane_num": 5,
+    },
+    # {
+    #     "node_direction_map": {
+    #         'Zpositive': [(89059500, 'T1Am'), (89049118, 'T2Am')]
+    #     },
+    #     "transform_nodes": {83000501, 83700201},
+    #     "source_shell_nodes": ["83000501", "83700201"],
+    #     "select_num": 150
+    # },
+    # 可以继续添加更多的任务配置...
+]
+
+# 执行批量任务
+file_lines = []  # 这里应为文件行数据，可以通过 `read_node_coordinates` 获取
 start_time = time.time()
-
-# 获取表面节点和原始坐标
-nodes_method, nodes_param, range = "csv", "E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\shell_property.csv", "A2:B35"
-all_shell_nodes = get_all_nodes(nodes_method, nodes_param, range)
-all_shell_points = np.array([[node._id] + list(node.position) for node in all_shell_nodes])
-
-# 定义 shell_node_data 数组
-num_shell_nodes = len(all_shell_nodes)
-shell_node_data = np.empty((num_shell_nodes, 7), dtype=object)
-shell_node_data[:, 0] = [node._id for node in all_shell_nodes]
-shell_node_data[:, 1:4] = [node.position for node in all_shell_nodes]
-# 直接在主函数中将 shell_node_data 转换为字典，字典的键为节点 ID，值为变换后的坐标 (X', Y', Z')
-node_id_to_transformed_coords = {int(row[0]): row[4:7] for row in shell_node_data}
-
-# 提取 all_shell_points 中的 node IDs，并转换为集合，表面目标坐标
-input_file = r"E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\output.k"
-target_nodeids = set(int(point[0]) for point in all_shell_points)
-target_shell_points, file_lines = read_node_coordinates(input_file, target_nodeids)
-
-# 创建目标节点字典
-target_node_dict = {int(node_data_point[0]): node_data_point[1:] for node_data_point in target_shell_points}
-# 通过 node_id 将目标坐标批量填充到 shell_node_data 中
-for idx, node_id in enumerate(shell_node_data[:, 0]):
-    if node_id in target_node_dict:
-        shell_node_data[idx, 4:7] = target_node_dict[node_id]
-
-# 内部定位节点映射
-node_name_map = {
-    89063944: 'T12',  
-    89059500: 'T1',
-    89004125: 'Manubrium',
-    89003192: 'xiphisternum',
-    89049118: 'T2',
-    89059890: 'T3',
-    89060409: 'T4',
-    89060803: 'T5',
-    89061235: 'T6',
-    89062096: 'T7',
-    89062148: 'T8',
-    89062189: 'T9',
-    89063196: 'T10',
-    89051426: 'T11',
-}
-# 提取 node_name_map 中的节点 ID
-node_ids = list(node_name_map.keys())
-inner_locating_nodes = get_all_nodes("node", node_ids)
-inner_locating_points = np.array([[node._id] + list(node.position) for node in inner_locating_nodes])  # 将 nodeid 转换为整数
-outer_locating_points = project_to_surface_along_x(inner_locating_points, all_shell_points)
-
-# 提取 inner_locating_points 和 outer_locating_nodes 中的 ID
-inner_ids = [int(point[0]) for point in inner_locating_points]  # 提取 ID 并转换为整数
-outer_ids = [int(point[0]) for point in outer_locating_points]   # 提取 ID 并转换为整数
-
-# 输出内部定位点的 ID 列表
-print("内部定位点 ID 列表 (inner_locating_points):")
-print(inner_ids)
-
-# 输出投影后的定位点 ID 列表
-print("\n投影后的定位点 ID 列表 (outer_locating_points):")
-print(outer_ids)
-
-transformed_inner_locating_points = transform_inner_using_proportions(
-    inner_locating_points,  # 需要变换的内部定位点
-    outer_locating_points,  # 原始外部定位点
-    get_target_coordinates(outer_locating_points),  # 变形后的外部定位点
-)
-
-# 输出推算后的内部点坐标
-print("\n推算后的内部点坐标 (ID + X, Y, Z):")
-for point in transformed_inner_locating_points:
-    print(f"ID: {int(point[0])}, X: {point[1]:.4f}, Y: {point[2]:.4f}, Z: {point[3]:.4f}")
-
-transform_nodes = get_all_nodes("set", ["101"])
-transform_points = np.array([[node._id] + list(node.position) for node in transform_nodes])  # 将 nodeid 转换为整数
-source_shell_nodes = get_all_nodes("pid", ["89200801","89700801"])
-source_select_nodes = select_uniform_nodes(source_shell_nodes, 100)
-source_select_points = np.array([[node._id] + list(node.position) for node in source_select_nodes])  # 将 nodeid 转换为整数
-target_select_points = get_target_coordinates(source_select_points)
-
-# 在调用 transform_target_points 之前打印类型，确认输入是否正确
-source_control_points = np.vstack([source_select_points, inner_locating_points])
-target_control_points = np.vstack([target_select_points, transformed_inner_locating_points])
-print("source_control_points 的数量:", source_control_points.shape[0])
-print("target_control_points 的数量:", target_control_points.shape[0])
-
-# print([int(point[0]) for point in source_control_points]) # 提取 ID 并转换为整数
-# print([int(point[0]) for point in target_control_points]) # 提取 ID 并转换为整数
-
-
-transformed_points = rbf_transform_3d_chunked(
-    transform_points,
-    source_control_points,                
-    target_control_points,
-    0)
-
-write_modified_coordinates(
-    output_file=input_file.replace(".k", "_modi.k"),
-    file_lines=file_lines,
-    updated_node_data=transformed_points
-)
-print("修改后的坐标已写入文件:", input_file.replace(".k", "_modi.k"))
+run_batch(task_configs)
 
 end_time = time.time()
 print(f"文件名: {os.path.basename(__file__)}, 总运行时间: {end_time - start_time:.2f} s")

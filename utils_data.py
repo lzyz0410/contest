@@ -244,6 +244,7 @@ def write_modified_coordinates(output_file, file_lines, updated_node_data):
     start_index, end_index = find_block(file_lines, "*NODE")
     
     print('开始写入修改后的文件...')
+
     
     # 转换为字典，方便查找
     id_to_data = {str(int(row[0])): row[1:] for row in updated_node_data}

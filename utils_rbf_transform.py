@@ -76,7 +76,7 @@ def rbf_transform_3d_chunked(all_points, source_control_points, target_control_p
     if len(target_control_points.shape) == 1:
         target_control_points = target_control_points.reshape(-1, 4)  # 将其变为 (M, 4)
 
-    # 提取坐标部分，忽略 `node_id`
+        # 提取坐标部分，忽略 `node_id`
     all_coords = all_points[:, 1:]  # (N x 3)
     source_control_coords = source_control_points[:, 1:]  # (M x 3)
     target_control_coords = target_control_points[:, 1:]  # (M x 3)
