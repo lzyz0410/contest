@@ -71,7 +71,7 @@ def project_and_transform_to_surface(all_shell_points, node_direction_map):
         'Znegative': all_shell_points[all_shell_points[:, 3] <= 0],
         'Zpositive': all_shell_points[all_shell_points[:, 3] >= 0]
     }
-    # 遍历每个方向
+    # 处理不同方向的投影
     for direction, nodes in node_direction_map.items():
         node_ids = [node[0] for node in nodes]
         inner_locating_nodes = get_all_nodes("node", node_ids)
@@ -81,13 +81,48 @@ def project_and_transform_to_surface(all_shell_points, node_direction_map):
         transformed_outer_points_direction = []
         transformed_inner_points_direction = []
 
-        # 优化：统一计算外部点距离
-        candidates = shell_points_by_direction[direction]
+        # 获取候选外部点
+        candidates = shell_points_by_direction.get(direction, np.array([]))
+
+        if len(candidates) == 0:
+            print(f"警告：未找到 {direction} 方向的候选外部点！")
+            continue
+
         for loc_point in inner_points:
             loc_node_id, loc_x, loc_y, loc_z = loc_point
-            distances = np.linalg.norm(candidates[:, 1:4] - [loc_x, loc_y, loc_z], axis=1)
-            min_idx = np.argmin(distances)
-            nearest = candidates[min_idx]
+
+            if direction == "Xnegative":
+                mask = all_shell_points[:, 1] < loc_x
+                dist_axis = (2, 3)  # 选择 YZ 方向最近的点
+            elif direction == "Xpositive":
+                mask = all_shell_points[:, 1] > loc_x
+                dist_axis = (2, 3)
+            elif direction == "Ynegative":
+                mask = all_shell_points[:, 2] < loc_y
+                dist_axis = (1, 3)  # 选择 XZ 方向最近的点
+            elif direction == "Ypositive":
+                mask = all_shell_points[:, 2] > loc_y
+                dist_axis = (1, 3)
+            elif direction == "Znegative":
+                mask = all_shell_points[:, 3] < loc_z
+                dist_axis = (1, 2)  # 选择 XY 方向最近的点
+            elif direction == "Zpositive":
+                mask = all_shell_points[:, 3] > loc_z
+                dist_axis = (1, 2)
+            else:
+                raise ValueError(f"未知方向: {direction}")
+
+            candidates = all_shell_points[mask]
+
+            if len(candidates) == 0:
+                # 若没有符合方向的点，选择最近点作为 fallback
+                distances = np.linalg.norm(all_shell_points[:, 1:] - [loc_x, loc_y, loc_z], axis=1)
+                nearest = all_shell_points[np.argmin(distances)]
+            else:
+                # 计算在选定的轴方向（YZ / XZ / XY）上的最小距离
+                distances = np.linalg.norm(candidates[:, dist_axis] - loc_point[list(dist_axis)], axis=1)
+                nearest = candidates[np.argmin(distances)]
+
             outer_locating_points_direction.append([nearest[0], nearest[1], nearest[2], nearest[3]])
 
         # 获取变换后的外部点
@@ -139,6 +174,33 @@ def get_target_coordinates(points):
 
     return np.array(target_points, dtype=float)
 
+def modify_transformed_inner_points(transformed_inner_locating_points, node_shifts):
+    """
+    只对特定的 node_id 进行不同方向的坐标平移，并返回修改后的 transformed_inner_locating_points。
+
+    :param transformed_inner_locating_points: (N, 4) 数组，每个点 [node_id, x, y, z]
+    :param node_shifts: 列表，包含多个 (node_id, shift_direction, shift_amount)
+    :return: 修改后的 transformed_inner_locating_points
+    """
+    modified_points = np.copy(transformed_inner_locating_points)  # 复制数据，避免修改原始数据
+
+    # 转换成字典，便于快速查找 (node_id: (shift_direction, shift_amount))
+    node_shift_dict = {node_id: (shift_direction, shift_amount) for node_id, shift_direction, shift_amount in node_shifts}
+
+    for i, point in enumerate(modified_points):
+        node_id, x, y, z = point
+
+        if int(node_id) in node_shift_dict:  # 仅修改指定的 node_id
+            shift_direction, shift_amount = node_shift_dict[int(node_id)]
+            
+            if shift_direction == "X":
+                modified_points[i][1] += shift_amount  # X 方向平移
+            elif shift_direction == "Y":
+                modified_points[i][2] += shift_amount  # Y 方向平移
+            elif shift_direction == "Z":
+                modified_points[i][3] += shift_amount  # Z 方向平移
+
+    return modified_points
 
 def process_task(task_settings):
     """
@@ -150,6 +212,7 @@ def process_task(task_settings):
     source_shell_nodes = task_settings["source_shell_nodes"]  # 假设已经是字符串列表
     total_side_num = task_settings["total_side_num"]
     total_plane_num = task_settings["total_plane_num"]
+    modify_nodes = task_settings.get("modify_nodes", [])  # 用于修改特定节点的变换后的内部点
 
     # 获取 transform_points, source_select_nodes 等输入
     transform_nodes = get_all_nodes("set", transform_sets)
@@ -165,6 +228,16 @@ def process_task(task_settings):
     # 获取投影后的内部和外部定位点
     inner_locating_points, outer_locating_points, transformed_outer_locating_points, transformed_inner_locating_points = project_and_transform_to_surface(all_shell_points, node_direction_map)
 
+    # **如果 `modify_nodes` 不为空，则进行修改**
+    if modify_nodes:
+        print("执行 modify_transformed_inner_points")
+        transformed_inner_locating_points = modify_transformed_inner_points(transformed_inner_locating_points, modify_nodes)
+
+    print("inner_locating_points")
+    print([int(point[0]) for point in inner_locating_points])
+    print("outer_locating_points")
+    print([int(point[0]) for point in outer_locating_points])
+
     # 合并内部、外部和变换后的定位点
     # 使用 numpy 的 unique 方法去重
 
@@ -174,6 +247,7 @@ def process_task(task_settings):
         inner_locating_points,
         outer_locating_points
     ])
+    print("source_all_points")
     # 直接打印所有的 node_id，格式为 int[node_id]
     print([int(point[0]) for point in source_all_points])
     # 合并所有 target points
@@ -182,6 +256,7 @@ def process_task(task_settings):
         transformed_inner_locating_points,
         transformed_outer_locating_points
     ])
+    print("target_all_points")
     print([int(point[0]) for point in target_all_points])
     # 使用 numpy.unique 来确保 node_id 不重复
     _, unique_source_idx = np.unique(source_all_points[:, 0], return_index=True)
@@ -236,27 +311,40 @@ def run_batch(task_configs):
 
 # 示例任务配置
 task_configs = [
-    {
-        "node_direction_map": {
-            'Xnegative': [(83010467, 'coccyx'), (89066294, 'Base of sacrum'),(89066279, 'Promontory'),(83012513,'ASIS-left'),(83512514,'ASIS-right'),
-            (89004125,'Manubrium'), (89003192, 'xiphisternum')],
-            'Zpositive': [(89063944, 'T12Am'), (89059500, 'T1Am')],
-            'Xpositive': [(89063788, 'T12Pm'),(89000726,'T1Pm')]
-        },
-        "transform_sets": ["101", "102","103"],
-        "source_shell_nodes": ["83200101", "83700101","89200801","89700801"],
-        "total_side_num": 20,
-        "total_plane_num": 5,
-    },
     # {
     #     "node_direction_map": {
-    #         'Zpositive': [(89059500, 'T1Am'), (89049118, 'T2Am')]
+    #         'Xnegative': [(83010467, 'coccyx'),(89066294, 'Base of sacrum'),(89066279, 'Promontory'),(83012513,'ASIS-left'),(83512514,'ASIS-right'),
+    #         (89004125,'Manubrium'), (89003192, 'xiphisternum'), (89059500, 'T1Am'),#(89063944, 'T12Am')
+    #         (89034241, 'Rib10LA'),(89034350, 'Rib8LA'), (89019613, 'Rib6LA'),(89018815,'Rib4LA'),(89018618,'Rib2LA'),(89018420,'Rib1LA'),
+    #         (89534241, 'Rib10RA'),(89534350, 'Rib8RA'), (89519613, 'Rib6RA'),(89518815,'Rib4RA'),(89518618,'Rib2RA'),(89518420,'Rib1RA'),
+    #         # (88178675, 'Glabella'),(88143570,''),(88261630,''),(88135352,''),(88161071,''),
+    #         # (88175279,''),(88170516,''),(88175940,''),(88171240,''),(88167682,''),
+    #         ],
+    #         'Xpositive': [(89063788, 'T12Pm'),(89000726,'T1Pm'),
+    #         (89053454,'Rib1LP'),(89004188,'Rib3LP'),(89019330,'Rib5LP'),(89004321,'Rib7LP'),(89004461,'Rib9LP'),(89004320,'Rib11LP'),
+    #         (89553454,'Rib1RP'),(89504188,'Rib3RP'),(89519330,'Rib5RP'),(89504321,'Rib7RP'),(89504461,'Rib9RP'),(89504320,'Rib11RP'),
+    #         ],
+    #         # 'Zpositive':[(88178168, 'Head C.G.'),(88176493, 'Head Top'),]
     #     },
-    #     "transform_nodes": {83000501, 83700201},
-    #     "source_shell_nodes": ["83000501", "83700201"],
-    #     "select_num": 150
+    #     "transform_sets": ["101","102","103","104"],
+    #     "source_shell_nodes": ["83200101", "83700101","89200801","89700801","88000222", "88000230","88000229", "88000231","88000221","88000223","87200101", "87700101"],
+    #     "total_side_num": 110,
+    #     "total_plane_num": 20,
+    #     "modify_nodes": [(83010467, "X", 50),(89066294, "X", 50), (89066279, "X", 50),(83012513, "X", 50),(83512514, "X", 50),
+    #                      (89063788, "Z", -20),(89063788, "X", -20)
+    #                      ]     
     # },
-    # 可以继续添加更多的任务配置...
+    {
+        "node_direction_map": {
+            'Xnegative': [(83010467, 'coccyx'),(89066294, 'Base of sacrum'),(89066279, 'Promontory'),(83012513,'ASIS-left'),(83512514,'ASIS-right'),
+            ],
+        },
+        "transform_sets": ["102"],
+        "source_shell_nodes": ["83200101", "83700101"],
+        "total_side_num": 20,
+        "total_plane_num": 5,
+        "modify_nodes": [(83010467, "X", 50),(89066294, "X", 50), (89066279, "X", 50),(83012513, "X", 50),(83512514, "X", 50),]       
+    },
 ]
 
 # 执行批量任务
