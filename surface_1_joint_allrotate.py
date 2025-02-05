@@ -135,8 +135,6 @@ def get_control_points4(all_points, rotated_all_points, control_fixed_method, co
     return source_control_points, target_control_points
 
 
-import numpy as np
-from scipy.spatial import KDTree
 
 def energy_based_correction(transformed_points_second, second_transition_filtered_points, collision_set, alpha=0.5, beta=1.0, max_step=0.5):
     """

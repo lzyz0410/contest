@@ -3,6 +3,7 @@ import pandas as pd
 from utils_node import *
 from utils_adjust import *
 from collections import defaultdict
+from utils_env import *
 '''
 "腿部规则" "臀部规则" "肩胸规则" "颈部规则" "头部规则" "手部规则"
 from reflect_utils import reflect
@@ -12,8 +13,10 @@ reflect(rules_to_run=True)
 # 调用 reflect() 函数，执行指定的规则
 reflect(rules_to_run=["手臂规则", "腿部规则"])
 '''
-# 缓存变量
-MAPPING_FILE_PATH = "E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\node_mapping.csv"
+# # 缓存变量
+# MAPPING_FILE_PATH = "E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\node_mapping.csv"
+# **调用函数**
+MAPPING_FILE_PATH = find_file_in_parents("node_mapping.csv")
 mapping = None
 reverse_mapping = None
 node_classification_cache = {}
@@ -144,11 +147,27 @@ def reflect_coordinates_with_near_plane_handling(REFLECTION_PLANE,coords, tolera
     return np.round(reflected_coords, decimals=6)  # 四舍五入精度到6位
 
 def reflect(rules_to_run=True):
-    # 判断是否使用 set71 作为数据源
-    use_set71 = any(rule in rules_to_run for rule in ["全手部规则", "全肩胸规则"])
+    # **确保 rules_to_run 处理正确**
+    normal_rules = ["头部规则", "颈部规则", "肩胸规则", "手部规则", "腿部规则", "臀部规则"]
+    full_body_rules = ["全手部规则", "全肩胸规则"]
+
+    if rules_to_run is True:
+        rules_to_run = normal_rules  # 运行所有普通规则（不包含全手部、全肩胸）
+    elif isinstance(rules_to_run, list):
+        if set(rules_to_run).issubset(set(full_body_rules)):  
+            rules_to_run = full_body_rules  # 如果只包含全手部、全肩胸，则只运行这些
+    else:
+        raise ValueError("rules_to_run 必须是 True 或者一个包含规则名称的列表")
+
+    use_set71 = any(rule in rules_to_run for rule in full_body_rules)  # 只有全手部/全肩胸时启用 set71
 
     # 根据数据源获取节点
-    data_source = ("set", ["71"]) if use_set71 else ("csv", "E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\shell_property.csv", "A2:B35")
+    #data_source = ("set", ["71"]) if use_set71 else ("csv", "E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\shell_property.csv", "A2:B35")
+    # **动态查找 `shell_property.csv`，替换硬编码路径**
+    shell_property_path = find_file_in_parents("shell_property.csv")
+
+    # 设置数据源（自动适配路径）
+    data_source = ("set", ["71"]) if use_set71 else ("csv", str(shell_property_path), "A2:B35")
     print(f"使用 {'set71' if use_set71 else 'CSV'} 作为数据源")
     all_nodes = get_all_nodes(*data_source)  # 直接解包参数
 
@@ -165,7 +184,7 @@ def reflect(rules_to_run=True):
     # 若使用 set71，则替换 "肩胸规则" 和 "手部规则" 为 "全肩胸规则" 和 "全手部规则"
     if use_set71:
         rules.update({
-            "全肩胸规则": lambda nodes: [node for node in nodes if str(node._id).startswith(("88", "89"))],
+            "全肩胸规则": lambda nodes: [node for node in nodes if str(node._id).startswith(("89"))],
             "全手部规则": lambda nodes: [node for node in nodes if str(node._id).startswith(("85", "86"))],
         })
 

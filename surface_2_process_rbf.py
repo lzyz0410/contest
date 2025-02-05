@@ -12,6 +12,7 @@ from utils_data import *
 from utils_node import *
 from utils_rbf_transform import *
 from utils_reflect import reflect
+from utils_env import *
 
 
 #命名规则ansa实体对象用nodes;np.array含id和坐标用points
@@ -35,15 +36,23 @@ def get_control_points1(control_points_csv_path):
 
 def main():   
 
-    #根据配置获取目标节点
-    nodes_method = "csv"  # 获取节点的方式：从 CSV 获取 PID 列表
-    nodes_param = "E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\shell_property.csv"
+    # 自动查找 `shell_property.csv`
+    shell_property_path = find_file_in_parents("shell_property.csv")
+
+    # 自动查找 `point1all.csv`
+    point1all_path = find_file_in_parents("point1all.csv")
+
+    # 读取 CSV 数据
+    nodes_method = "csv"  # 方式：从 CSV 获取 PID 列表
+    nodes_param = str(shell_property_path)  # 动态路径
     range = "A2:B35"  # 读取 PID 的范围
-    all_nodes = get_all_nodes(nodes_method, nodes_param,range)
-    
+    all_nodes = get_all_nodes(nodes_method, nodes_param, range)
+
+    # 转换数据
     all_points = np.array([[node._id] + list(node.position) for node in all_nodes])
 
-    source_control_points, target_control_points = get_control_points1("E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\point1all.csv")
+    # 获取控制点
+    source_control_points, target_control_points = get_control_points1(str(point1all_path))
 
     # 执行 RBF 变换
     transformed_all_points = rbf_transform_3d_chunked(all_points, source_control_points, target_control_points,0,20000)
