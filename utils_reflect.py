@@ -144,13 +144,15 @@ def reflect_coordinates_with_near_plane_handling(REFLECTION_PLANE,coords, tolera
     return np.round(reflected_coords, decimals=6)  # 四舍五入精度到6位
 
 def reflect(rules_to_run=True):
-    # 获取所有节点数据，读取一次
-    nodes_method = "csv"  # 获取节点的方式：从 CSV 获取 PID 列表
-    nodes_param = "E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\shell_property.csv"  # CSV 文件路径
-    range = "A2:B35"  # 读取 PID 的范围
-    all_nodes = get_all_nodes(nodes_method, nodes_param, range)  # 获取所有节点数据
+    # 判断是否使用 set71 作为数据源
+    use_set71 = any(rule in rules_to_run for rule in ["全手部规则", "全肩胸规则"])
 
-    # 默认规则字典
+    # 根据数据源获取节点
+    data_source = ("set", ["71"]) if use_set71 else ("csv", "E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\shell_property.csv", "A2:B35")
+    print(f"使用 {'set71' if use_set71 else 'CSV'} 作为数据源")
+    all_nodes = get_all_nodes(*data_source)  # 直接解包参数
+
+    # 规则字典（根据数据源动态调整）
     rules = {
         "头部规则": lambda nodes: [node for node in nodes if str(node._id).startswith("88")],
         "颈部规则": lambda nodes: [node for node in nodes if str(node._id).startswith("87")],
@@ -159,6 +161,13 @@ def reflect(rules_to_run=True):
         "腿部规则": lambda nodes: [node for node in nodes if str(node._id).startswith(("82", "81"))],
         "臀部规则": lambda nodes: [node for node in nodes if str(node._id).startswith("83")],
     }
+
+    # 若使用 set71，则替换 "肩胸规则" 和 "手部规则" 为 "全肩胸规则" 和 "全手部规则"
+    if use_set71:
+        rules.update({
+            "全肩胸规则": lambda nodes: [node for node in nodes if str(node._id).startswith(("88", "89"))],
+            "全手部规则": lambda nodes: [node for node in nodes if str(node._id).startswith(("85", "86"))],
+        })
 
     # 如果未指定 rules_to_run，则执行所有规则
     if rules_to_run is True:

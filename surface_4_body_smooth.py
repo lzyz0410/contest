@@ -22,7 +22,7 @@ laplacian_smoothing(["89200701","86200001"], iterations=2, alpha=0)
 enforce_coordinate_uniformity(get_nodes_from_set([22]), axis='o', left_nodes=None, smoothing_factor=0.1)     
 laplacian_smoothing(["89200701"], iterations=2, alpha=0)      
 laplacian_smoothing(["86200001"], iterations=2, alpha=0)     
-laplacian_smoothing(["86200001","86200301", "86200501","86200801","86201001"], iterations=2, alpha=0)
+laplacian_smoothing(["86200001","86200301", "86200501","86200801"], iterations=2, alpha=0)
 laplacian_smoothing(["86200801"], iterations=5, alpha=0)
 
 reflect(rules_to_run=["颈部规则","肩胸规则","手部规则"])
@@ -35,7 +35,6 @@ laplacian_smoothing(["82200401","82200601"], iterations=1, alpha=0)  #x
 enforce_coordinate_uniformity(get_nodes_from_set([10]), axis='z', left_nodes=None, smoothing_factor=0.1)            
 laplacian_smoothing(["82200601","82201101"], iterations=10, alpha=0)
 enforce_coordinate_uniformity(get_nodes_from_set([8]), axis='z', left_nodes=None, smoothing_factor=0.1)            
-laplacian_smoothing(["82201101","82201301"], iterations=3, alpha=0)
 
 reflect(rules_to_run=True)
 end_time = time.time()
