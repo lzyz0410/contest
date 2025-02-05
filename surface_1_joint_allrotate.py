@@ -134,71 +134,105 @@ def get_control_points4(all_points, rotated_all_points, control_fixed_method, co
 
     return source_control_points, target_control_points
 
+import numpy as np
+from scipy.spatial import cKDTree, Delaunay
 
-
-def energy_based_correction(transformed_points_second, second_transition_filtered_points, collision_set, alpha=0.5, beta=1.0, max_step=0.5):
+def detect_penetration_corrected(collection_set, transformed_points_second):
     """
-    使第二次 RBF 变换后的点不会穿透 collision_set，而是始终包裹在外部。
+    使用 `Delaunay` 三角剖分检测 `TransformedPointsSecond` 是否穿透 `CollectionSet`。
 
     参数:
-    - transformed_points_second: np.array (n, 4), 第二次 RBF 变换后的点
-    - second_transition_filtered_points: np.array (n, 4), 变换前的原始点
-    - collision_set: set, 需要避免的碰撞区域
-    - alpha: 控制修正的平滑程度，建议在 0.3-0.7 之间
-    - beta: 势能函数控制参数，影响斥力作用范围
-    - max_step: 限制点的最大修正距离，防止点跳跃过远
+        collection_set (list): CollectionSet 点云的节点对象
+        transformed_points_second (np.array): (M, 4) 需要检测的点集，形如 [node_id, x, y, z]
 
     返回:
-    - corrected_points: np.array (n, 4), 经过修正的点
+        penetration_ids (list): 发生穿透的 `TransformedPointsSecond` 点 ID 列表
     """
-    if len(collision_set) == 0:
-        return transformed_points_second  # 没有碰撞点则直接返回
+    if len(collection_set) == 0:
+        print("集合为空，跳过检测")
+        return []
 
-    # 获取碰撞区域的点坐标
-    collision_nodes = get_all_nodes("set", collision_set)
-    collision_points = np.array([node.position for node in collision_nodes if node is not None])
+    # **获取 CollectionSet 和 TransformedPointsSecond 的点云坐标**
+    collection_nodes = get_all_nodes("set", collection_set)
+    collection_points = np.array([node.position for node in collection_nodes])  # (N,3)
 
-    if collision_points.shape[0] == 0:
-        return transformed_points_second  # 避免空数据导致错误
+    second_points = transformed_points_second[:, 1:4]  # (M,3)
+    second_ids = transformed_points_second[:, 0].astype(int)  # (M,)
 
-    kd_tree = KDTree(collision_points)  # 构建 KD-Tree
+    # **构建 Delaunay 三角剖分**
+    delaunay = Delaunay(collection_points)
 
-    # 复制 RBF 变换后的点作为修正后结果
-    corrected_points = transformed_points_second.copy()
+    # **检查 TransformedPointsSecond 是否在 CollectionSet 内部**
+    inside_mask = delaunay.find_simplex(second_points) >= 0  # `True` 表示点在 CollectionSet 内部
 
-    # 计算每个点的原始移动方向（RBF 变换趋势）
-    original_movement = transformed_points_second[:, 1:4] - second_transition_filtered_points[:, 1:4]
+    # **筛选穿透点**
+    penetration_ids = second_ids[inside_mask].tolist()
 
-    # 标记哪些点发生了碰撞（重叠）
-    collision_mask = np.zeros(len(corrected_points), dtype=bool)
+    print(f"✅ 发现 {len(penetration_ids)} 个穿透点！")
+    print("📌 穿透点 ID 列表:", penetration_ids)
 
-    for i in range(len(corrected_points)):
-        p_prime = corrected_points[i, 1:4]  # 取出 3D 坐标部分（x, y, z）
+    return penetration_ids
 
-        # 查询最近的碰撞点
-        distance, nearest_index = kd_tree.query(p_prime)
-        closest_point = collision_points[nearest_index]  # 取最近的 3D 位置
 
-        # 如果点已经在 collision_set 内，或者非常接近，我们需要推开它
-        if distance < max_step:
-            collision_mask[i] = True  # 标记该点需要调整
+import numpy as np
+from scipy.spatial import cKDTree
 
-            # 计算推开方向
-            direction = (p_prime - closest_point) / (np.linalg.norm(p_prime - closest_point) + 1e-6)  # 归一化方向
-            phi = alpha * np.exp(-beta * distance**2)  # 计算势能影响
-            
-            # 计算调整后的偏移量（向外推）
-            outward_correction = min(phi, max_step) * direction
+def move_penetration_to_surface(transformed_points_second, collection_set, expansion_distance=100):
+    """
+    1. 检测穿透点。
+    2. 将穿透点所在的平面向外扩展一定距离（例如10毫米），使整个平面远离 CollectionSet 表面。
 
-            # 结合原始形变趋势，确保调整不会破坏整体形状
-            final_movement = (1 - alpha) * original_movement[i] + alpha * outward_correction
+    参数：
+        transformed_points_second (np.array): (M, 4) 需要修正的点集，格式为 [node_id, x, y, z]
+        collection_set (list): Collection Set 点云的 Set ID 列表
+        expansion_distance (float): 外扩的距离，单位为米，默认 10 毫米。
 
-            # 更新点的位置
-            corrected_points[i, 1:4] += final_movement
+    返回：
+        transformed_points_second (np.array): 修正后的 TransformPointSecond
+    """
+    
+    # 使用 detect_penetration_corrected 函数检测穿透点
+    penetration_ids = detect_penetration_corrected(collection_set, transformed_points_second)
 
-    print(f"势能优化完成，调整的碰撞点数量: {np.sum(collision_mask)}, 最大单点移动量: {np.max(np.linalg.norm(corrected_points[:, 1:4] - transformed_points_second[:, 1:4], axis=1)):.6f}")
+    # 获取穿透点的坐标
+    second_points = transformed_points_second[:, 1:4]  # (M,3)
+    second_ids = transformed_points_second[:, 0].astype(int)  # (M,)
 
-    return corrected_points
+    # 选出所有穿透点的坐标
+    penetration_points = second_points[np.isin(second_ids, penetration_ids)]
+
+    # 如果没有穿透点，直接返回
+    if len(penetration_points) == 0:
+        print("没有找到穿透点，跳过修正")
+        return transformed_points_second
+
+    # 计算穿透点的平面法线
+    # 使用最小二乘法拟合平面，拟合公式: Ax + By + Cz + D = 0
+    centroid = np.mean(penetration_points, axis=0)  # 计算穿透点的几何中心
+
+    # 计算穿透点到几何中心的偏差
+    deviations = penetration_points - centroid
+
+    # 使用SVD分解求解法线
+    _, _, Vt = np.linalg.svd(deviations)
+    normal_vector = Vt[-1, :]  # 最后一行是法线方向
+
+    # 将整个平面沿法线方向外扩
+    expanded_points = penetration_points + normal_vector * expansion_distance
+
+    # 更新穿透点的新坐标
+    for i, pid in enumerate(second_ids):
+        if pid in penetration_ids:
+            point = second_points[i]
+            new_position = expanded_points[np.where(penetration_ids == pid)[0][0]]
+            transformed_points_second[i, 1:4] = new_position  # 更新 transformed_points_second 中的坐标
+
+            # 打印输出穿透点移动后的新位置
+            print(f"穿透点 NodeID {pid} 当前位置: {point} 新位置: {new_position}")
+
+    print(f"✅ 所有穿透点所在平面已向外扩展了 {expansion_distance} 米。")
+    
+    return transformed_points_second
 
 def main(params):
     # 直接从字典中提取各个参数
@@ -306,22 +340,14 @@ def main(params):
             second_transition_filtered_points, source_control_points_second, target_control_points_second, 0, 20000,
             kernel=kernel, **kernel_params
         )
-
+        update_ansa_node_coordinates(transformed_points_second, second_transition_filtered_nodes)
         if 'collision_set' in params:
-            collision_set = params['collision_set']
-            print("执行势能优化...")
+            print("🔍 执行穿透检测...")
+            transformed_points_second= move_penetration_to_surface(transformed_points_second, params['collision_set'],expansion_distance = -10)
 
-            corrected_points = energy_based_correction(
-                transformed_points_second, 
-                second_transition_filtered_points, 
-                collision_set, 
-                alpha=0.5,  # 影响推开的强度
-                beta=1.0,   # 控制势能衰减
-                max_step=0.5  # 允许的最大修正步长
-            )
+        update_ansa_node_coordinates(transformed_points_second, second_transition_filtered_nodes)
 
-            update_ansa_node_coordinates(corrected_points, transition_filtered_nodes)
-# 记录总的开始时间
+    # 记录总的开始时间
 start_time = time.time()
 #wrist
 params_wrist = {
