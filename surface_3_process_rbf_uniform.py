@@ -1,6 +1,6 @@
 import os
 import sys
-third_packages = r"G:\\anaconda3\\envs\\ansa_meta_env\\Lib\\site-packages"
+third_packages = r"G:\\pyhton3119\\Lib\\site-packages"
 sys.path.append(third_packages)
 
 import ansa
@@ -106,7 +106,7 @@ def main():
     batch_configs = [
         {
             "nodes_method": "pid",
-            "nodes_param": ["88000222", "88000230"],
+            "nodes_param": ["88000222", "88000230"], 
             "total_side_num": 40,  # 左右两侧控制点的总数量
             "total_plane_num": 20,  # 对称面控制点数量
             "enforce_uniformity": True,  # 调用 enforce_coordinate_uniformity

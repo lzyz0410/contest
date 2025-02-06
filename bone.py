@@ -1,6 +1,6 @@
 import os
 import sys
-third_packages = r"G:\\anaconda3\\envs\\ansa_meta_env\\Lib\\site-packages"
+third_packages = r"G:\\pyhton3119\\Lib\\site-packages"
 sys.path.append(third_packages)
 
 import ansa
@@ -11,201 +11,27 @@ import pandas as pd
 from utils_data import *
 from utils_node import *
 from utils_rbf_transform import *
-
+from utils_env import *
+from utils_bond_locate import *
+from utils_reflect import *
 # 全局字典
 node_id_to_transformed_coords = {}
-# 全局变量，用于存储所有的变换后的节点
-all_transformed_points = []
-input_file = r"E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\output.k"
-output_file = input_file.replace(".k", "_transformed.k")
+from pathlib import Path
+input_file = find_file_in_parents("output.k")
+output_file = input_file.with_name(input_file.stem + "_transformed.k")
+shell_property_file = find_file_in_parents("shell_property.csv")
 file_lines = None
-# 初始化函数：加载表面节点数据和目标坐标
-def initialize_shell_data():
-    global all_shell_points, node_id_to_transformed_coords, file_lines
-    # 1. 获取表面节点和原始坐标
-    nodes_method, nodes_param, range = "csv", "E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\shell_property.csv", "A2:B35"
-    all_shell_nodes = get_all_nodes(nodes_method, nodes_param, range)
-    all_shell_points = np.array([[node._id] + list(node.position) for node in all_shell_nodes])
 
-    # 2. 定义 shell_node_data 数组
-    num_shell_nodes = len(all_shell_nodes)
-    shell_node_data = np.empty((num_shell_nodes, 7), dtype=object)
-    shell_node_data[:, 0] = [node._id for node in all_shell_nodes]
-    shell_node_data[:, 1:4] = [node.position for node in all_shell_nodes]
-
-    # 3. 加载目标坐标
-    target_nodeids = set(int(point[0]) for point in all_shell_points)
-    input_file = r"E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\output.k"
-    target_shell_points, file_lines = read_node_coordinates(input_file, target_nodeids)
-
-    # 创建目标节点字典
-    target_node_dict = {int(node_data_point[0]): node_data_point[1:] for node_data_point in target_shell_points}
-
-    # 4. 更新 shell_node_data
-    for idx, node_id in enumerate(shell_node_data[:, 0]):
-        if node_id in target_node_dict:
-            shell_node_data[idx, 4:7] = target_node_dict[node_id]
-
-    # 构建 node_id_to_transformed_coords 字典
-    node_id_to_transformed_coords = {int(row[0]): row[4:7] for row in shell_node_data}
-
-    # 返回所有初始化数据
-    return all_shell_points, node_id_to_transformed_coords, file_lines
-
-def project_and_transform_to_surface(all_shell_points, node_direction_map):
+def process_bone_locating_points(task_settings):
     """
-    根据投影方向计算每个内部节点的投影外部点和变换后的内部点，并将每个方向的结果合并返回
-    将原本分散的函数逻辑合并为一个函数
+    主任务函数：处理并变换骨架定位点
+    1. 从 `initialize_shell_data` 获取所有的节点和原始坐标。
+    2. 使用 `project_and_transform_to_surface` 计算每个方向的投影外部点和变换后的定位点。
+    3. 输出变换后的定位点供后续使用。
     """
-    inner_locating_points = []  # 存储原始内部定位点
-    outer_locating_points = []  # 存储原始外部定位点
-    transformed_inner_locating_points = []  # 存储变换后的内部定位点
-    transformed_outer_locating_points = []  # 存储变换后的外部定位点
-    
-    # 预先过滤并缓存外部点
-    shell_points_by_direction = {
-        'Xnegative': all_shell_points[all_shell_points[:, 1] <= 0],
-        'Xpositive': all_shell_points[all_shell_points[:, 1] >= 0],
-        'Ynegative': all_shell_points[all_shell_points[:, 2] <= 0],
-        'Ypositive': all_shell_points[all_shell_points[:, 2] >= 0],
-        'Znegative': all_shell_points[all_shell_points[:, 3] <= 0],
-        'Zpositive': all_shell_points[all_shell_points[:, 3] >= 0]
-    }
-    # 处理不同方向的投影
-    for direction, nodes in node_direction_map.items():
-        node_ids = [node[0] for node in nodes]
-        inner_locating_nodes = get_all_nodes("node", node_ids)
-        inner_points = np.array([[node._id] + list(node.position) for node in inner_locating_nodes])
-
-        outer_locating_points_direction = []
-        transformed_outer_points_direction = []
-        transformed_inner_points_direction = []
-
-        # 获取候选外部点
-        candidates = shell_points_by_direction.get(direction, np.array([]))
-
-        if len(candidates) == 0:
-            print(f"警告：未找到 {direction} 方向的候选外部点！")
-            continue
-
-        for loc_point in inner_points:
-            loc_node_id, loc_x, loc_y, loc_z = loc_point
-
-            if direction == "Xnegative":
-                mask = all_shell_points[:, 1] < loc_x
-                dist_axis = (2, 3)  # 选择 YZ 方向最近的点
-            elif direction == "Xpositive":
-                mask = all_shell_points[:, 1] > loc_x
-                dist_axis = (2, 3)
-            elif direction == "Ynegative":
-                mask = all_shell_points[:, 2] < loc_y
-                dist_axis = (1, 3)  # 选择 XZ 方向最近的点
-            elif direction == "Ypositive":
-                mask = all_shell_points[:, 2] > loc_y
-                dist_axis = (1, 3)
-            elif direction == "Znegative":
-                mask = all_shell_points[:, 3] < loc_z
-                dist_axis = (1, 2)  # 选择 XY 方向最近的点
-            elif direction == "Zpositive":
-                mask = all_shell_points[:, 3] > loc_z
-                dist_axis = (1, 2)
-            else:
-                raise ValueError(f"未知方向: {direction}")
-
-            candidates = all_shell_points[mask]
-
-            if len(candidates) == 0:
-                # 若没有符合方向的点，选择最近点作为 fallback
-                distances = np.linalg.norm(all_shell_points[:, 1:] - [loc_x, loc_y, loc_z], axis=1)
-                nearest = all_shell_points[np.argmin(distances)]
-            else:
-                # 计算在选定的轴方向（YZ / XZ / XY）上的最小距离
-                distances = np.linalg.norm(candidates[:, dist_axis] - loc_point[list(dist_axis)], axis=1)
-                nearest = candidates[np.argmin(distances)]
-
-            outer_locating_points_direction.append([nearest[0], nearest[1], nearest[2], nearest[3]])
-
-        # 获取变换后的外部点
-        transformed_outer_points_direction = get_target_coordinates(np.array(outer_locating_points_direction))
-
-        # 计算变换后的内部点
-        for inner, outer ,transformed_outer in zip(inner_points, outer_locating_points_direction, transformed_outer_points_direction):
-            loc_node_id, loc_x, loc_y, loc_z = inner
-            outer_node_id, outer_x, outer_y, outer_z = outer
-            transformed_outer_node_id, transformed_outer_x, transformed_outer_y, transformed_outer_z = transformed_outer
-            if direction in ["Xnegative", "Xpositive"]:
-                proportion_x = (transformed_outer_x - outer_x) / (loc_x - outer_x)  
-                transformed_x = loc_x + proportion_x * (loc_x - outer_x)
-                transformed_inner_points_direction.append([loc_node_id, transformed_x, transformed_outer_y, transformed_outer_z])
-            elif direction in ["Ynegative", "Ypositive"]:
-                proportion_y = (transformed_outer_y - outer_y) / (loc_y - outer_y) 
-                transformed_y = loc_y + proportion_y * (loc_y - outer_y)
-                transformed_inner_points_direction.append([loc_node_id, transformed_outer_x, transformed_y, transformed_outer_z])
-            elif direction in ["Znegative", "Zpositive"]:
-                proportion_z = (transformed_outer_z - outer_z) / (loc_z - outer_z) 
-                transformed_z = loc_z + proportion_z * (loc_z - outer_z)
-                transformed_inner_points_direction.append([loc_node_id, transformed_outer_x, transformed_outer_y, transformed_z])
-
-        transformed_outer_locating_points.extend(transformed_outer_points_direction)
-        transformed_inner_locating_points.extend(transformed_inner_points_direction)
-        inner_locating_points.extend(inner_points.tolist())
-        outer_locating_points.extend(outer_locating_points_direction)
-
-    return np.array(inner_locating_points), np.array(outer_locating_points), np.array(transformed_outer_locating_points), np.array(transformed_inner_locating_points)
-
-
-def get_target_coordinates(points):
-    """
-    根据给定的 points 数组，从 shell_node_data 中查找每个节点的变换后坐标，并构建新的数组。
-
-    :param points: 包含节点 ID 和坐标的 numpy 数组，形状为 (n, 4)，每行格式为 [id, x, y, z]
-    :return: 包含节点 ID 和变换后坐标的 numpy 数组，形状为 (n, 4)
-    """
-    target_points = []
-
-    for point in points:
-        node_id = int(point[0])  # 获取输入点的 ID
-        if node_id in node_id_to_transformed_coords:
-            # 获取变换后的坐标
-            transformed_coords = node_id_to_transformed_coords[node_id]
-            target_points.append([node_id] + list(transformed_coords))
-        else:
-            print(f"警告：未找到节点 ID {node_id} 的变换坐标。")
-
-    return np.array(target_points, dtype=float)
-
-def modify_transformed_inner_points(transformed_inner_locating_points, node_shifts):
-    """
-    只对特定的 node_id 进行不同方向的坐标平移，并返回修改后的 transformed_inner_locating_points。
-
-    :param transformed_inner_locating_points: (N, 4) 数组，每个点 [node_id, x, y, z]
-    :param node_shifts: 列表，包含多个 (node_id, shift_direction, shift_amount)
-    :return: 修改后的 transformed_inner_locating_points
-    """
-    modified_points = np.copy(transformed_inner_locating_points)  # 复制数据，避免修改原始数据
-
-    # 转换成字典，便于快速查找 (node_id: (shift_direction, shift_amount))
-    node_shift_dict = {node_id: (shift_direction, shift_amount) for node_id, shift_direction, shift_amount in node_shifts}
-
-    for i, point in enumerate(modified_points):
-        node_id, x, y, z = point
-
-        if int(node_id) in node_shift_dict:  # 仅修改指定的 node_id
-            shift_direction, shift_amount = node_shift_dict[int(node_id)]
-            
-            if shift_direction == "X":
-                modified_points[i][1] += shift_amount  # X 方向平移
-            elif shift_direction == "Y":
-                modified_points[i][2] += shift_amount  # Y 方向平移
-            elif shift_direction == "Z":
-                modified_points[i][3] += shift_amount  # Z 方向平移
-
-    return modified_points
-
-def process_task(task_settings):
-    """
-    处理单个任务，计算变换后的节点并添加到全局的 all_transformed_points 列表中
-    """
+    # Step 1: 初始化所有表面节点数据
+    print("初始化骨架定位点数据...")
+    all_shell_points, node_id_to_transformed_coords, file_lines = initialize_shell_data()
     # 获取当前任务的设置
     use_manual_source_nodes = task_settings.get("use_manual_source_nodes", False) #false是用xyz投影点
     transform_sets = task_settings["transform_sets"]  # 将集合转换为列表
@@ -232,13 +58,13 @@ def process_task(task_settings):
         target_select_points = get_target_coordinates(source_select_points)
 
     if use_manual_source_nodes:
-        print("`use_manual_source_nodes=True`，不进行投影，仅使用 `source_shell_nodes` 进行 RBF 变换")
-        print("source_select_points")
-        print([int(point[0]) for point in source_select_points])
-        print("target_select_points")
-        print([int(point[0]) for point in target_select_points])
+        # print("`use_manual_source_nodes=True`，不进行投影，仅使用 `source_shell_nodes` 进行 RBF 变换")
+        # print("source_select_points")
+        # print([int(point[0]) for point in source_select_points])
+        # print("target_select_points")
+        # print([int(point[0]) for point in target_select_points])
         # 进行 RBF 变换
-        transformed_points = rbf_transform_3d_chunked(
+        after_transformed_points = rbf_transform_3d_chunked(
             transform_points,
             source_select_points,
             target_select_points,
@@ -254,10 +80,10 @@ def process_task(task_settings):
             print("执行 modify_transformed_inner_points")
             transformed_inner_locating_points = modify_transformed_inner_points(transformed_inner_locating_points, modify_nodes)
 
-        print("inner_locating_points")
-        print([int(point[0]) for point in inner_locating_points])
-        print("outer_locating_points")
-        print([int(point[0]) for point in outer_locating_points])
+        # print("inner_locating_points")
+        # print([int(point[0]) for point in inner_locating_points])
+        # print("outer_locating_points")
+        # print([int(point[0]) for point in outer_locating_points])
 
         # 合并内部、外部和变换后的定位点
         # 使用 numpy 的 unique 方法去重
@@ -268,17 +94,17 @@ def process_task(task_settings):
             inner_locating_points,
             outer_locating_points
         ])
-        print("source_all_points")
-        # 直接打印所有的 node_id，格式为 int[node_id]
-        print([int(point[0]) for point in source_all_points])
+        # print("source_all_points")
+        # # 直接打印所有的 node_id，格式为 int[node_id]
+        # print([int(point[0]) for point in source_all_points])
         # 合并所有 target points
         target_all_points = np.vstack([
             target_select_points,
             transformed_inner_locating_points,
             transformed_outer_locating_points
         ])
-        print("target_all_points")
-        print([int(point[0]) for point in target_all_points])
+        # print("target_all_points")
+        # print([int(point[0]) for point in target_all_points])
         # 使用 numpy.unique 来确保 node_id 不重复
         _, unique_source_idx = np.unique(source_all_points[:, 0], return_index=True)
         _, unique_target_idx = np.unique(target_all_points[:, 0], return_index=True)
@@ -287,92 +113,251 @@ def process_task(task_settings):
         target_control_points = target_all_points[unique_target_idx]
         
         # 进行 RBF 变换
-        transformed_points = rbf_transform_3d_chunked(
+        after_transformed_points = rbf_transform_3d_chunked(
             transform_points,
             source_control_points,
             target_control_points,
             0
         )
-    print(f"变换后的点数: {transformed_points.shape[0]}")
+        update_ansa_node_coordinates(after_transformed_points, transform_nodes)
 
-    # 将变换后的点添加到全局列表中
-    all_transformed_points.append(transformed_points)
+    return after_transformed_points,file_lines
 
 
-def write_all_transformed_points():
+
+def get_target_coordinates_from_dict(points, transformed_points_dict):
     """
-    所有任务完成后，只写入一次所有的变换后的坐标
+    从字典中获取变换后的坐标
+    
+    :param points: 包含节点 ID 和坐标的 numpy 数组，形状为 (n, 4)，每行格式为 [id, x, y, z]
+    :param transformed_points_dict: 字典，键是节点 ID，值是变换后的坐标
+    :return: 变换后的坐标
     """
-    # 合并所有变换后的坐标
-    all_transformed_points_combined = np.vstack(all_transformed_points)
-    # 写入修改后的坐标
+    target_points = []
+    
+    for point in points:
+        node_id = int(point[0])  # 获取节点 ID
+        if node_id in transformed_points_dict:
+            # 从字典中获取变换后的坐标并添加到目标点列表
+            target_points.append([node_id] + list(transformed_points_dict[node_id]))
+        else:
+            # 如果未找到变换后的坐标，输出警告并跳过该节点
+            print(f"警告：未找到节点 ID {node_id} 的变换坐标，跳过该节点。")
+            continue  # 跳过该节点
+
+    return np.array(target_points, dtype=float)
+
+
+def process_inner(task2_settings, after_bone_transformed_points):
+    # 获取当前任务的设
+    inner_method = task2_settings.get("inner_method")
+    inner_param = task2_settings.get("inner_param")
+    source_shell_method = task2_settings.get("source_shell_method")
+    source_shell_param = task2_settings.get("source_shell_param")
+    source_bone_method = task2_settings.get("source_bone_method")
+    source_bone_param = task2_settings.get("source_bone_param")
+    shell_total_num = task2_settings.get("shell_total_num")
+    bone_total_num = task2_settings.get("bone_total_num")
+
+    # 获取反射规则（如果存在）
+    rules_to_run = task2_settings.get("rules_to_run", None)
+
+    # 获取内部节点
+    print("正在获取内部节点...")
+    inner_transformed_nodes = get_all_nodes(inner_method, inner_param)
+    inner_transformed_points = np.array([[node._id] + list(node.position) for node in inner_transformed_nodes])
+
+    print("正在获取源外壳节点...")
+    source_shell_nodes = get_all_nodes(source_shell_method, source_shell_param)
+    source_shell_nodes_selected_nodes = select_uniform_nodes(source_shell_nodes, shell_total_num)
+    source_shell_nodes_selected_points = np.array([[node._id] + list(node.position) for node in source_shell_nodes_selected_nodes])
+    print("source_shell_nodes_selected_points")
+    print([int(point[0]) for point in source_shell_nodes_selected_points])
+    
+    # 使用 tqdm 显示进度条
+    print("正在获取目标外壳节点坐标...")
+    traget_shell_nodes_selected_points = get_target_coordinates(source_shell_nodes_selected_points)
+
+    # 获取源骨架节点（set）
+    print("正在获取源骨架节点...")
+    source_bone_nodes = get_all_nodes(source_bone_method, source_bone_param)
+    source_bone_nodes_selected_nodes = select_uniform_nodes(source_bone_nodes, bone_total_num)
+    source_bone_nodes_selected_points = np.array([[node._id] + list(node.position) for node in source_bone_nodes_selected_nodes])
+    print("source_bone_nodes_selected_points")
+    print([int(point[0]) for point in source_bone_nodes_selected_points])
+
+    # 获取变换后的坐标字典
+    print("正在获取变换后的坐标字典...")
+    transformed_points_dict = {int(point[0]): point[1:] for point in after_bone_transformed_points}
+
+    # 从字典中获取变换后的坐标
+    print("正在从字典中获取变换后的坐标...")
+    target_bone_nodes_selected_points = get_target_coordinates_from_dict(
+        source_bone_nodes_selected_points, transformed_points_dict)
+    
+    # 合并源点和目标点
+    print("正在合并源点和目标点...")
+    source_points = np.vstack([source_shell_nodes_selected_points, source_bone_nodes_selected_points])
+    target_points = np.vstack([traget_shell_nodes_selected_points, target_bone_nodes_selected_points])
+
+    # 执行 RBF 变换
+    print("正在执行 RBF 变换...")
+    after_inner_transformed_points = rbf_transform_3d_chunked(inner_transformed_points,source_points,target_points,0,chunk_size=1000)
+
+    update_ansa_node_coordinates(after_inner_transformed_points, inner_transformed_nodes)
+    if rules_to_run:
+        print("正在执行反射规则...")
+        reflected_points = reflect(rules_to_run)
+         # 检查 reflected_points 的形状
+        if reflected_points.size == 0:
+            print("警告：反射规则未修改任何节点。")
+        elif reflected_points.shape[1] != 4:
+            print(f"错误：reflected_points 的形状为 {reflected_points.shape}，不符合 (n, 4) 的要求。")
+            raise ValueError("reflected_points 的形状必须为 (n, 4)。")
+        after_inner_transformed_points = np.vstack([after_inner_transformed_points, reflected_points])
+
+    return after_inner_transformed_points, after_bone_transformed_points
+
+
+def main(task_settings_list,task2_settings_list):
+
+    start_time = time.time()
+    all_transformed_inner_points = []
+    # 检查 task_settings_list 是否只有一个任务
+    if len(task_settings_list) != 1:
+        raise ValueError("task_settings_list 必须包含且仅包含一个任务。")
+
+    # 处理唯一的 task_settings
+    print("处理骨架定位点变换...")
+    task_settings = task_settings_list[0]
+    after_bone_transformed_points, file_lines = process_bone_locating_points(task_settings)
+    print("骨架定位点变换处理完成。")
+
+    # 依次处理所有的 task2_settings
+    for i, task2_settings in enumerate(task2_settings_list):
+        print(f"\n正在处理第 {i + 1} 个 task2 任务...")
+        
+        # 处理内部节点变换
+        print("处理内部节点变换...")
+        after_inner_transformed_points, _ = process_inner(task2_settings, after_bone_transformed_points)
+
+        # 将结果添加到全局列表中
+        all_transformed_inner_points.append(after_inner_transformed_points)
+
+        print(f"第 {i + 1} 个 task2 任务处理完成。")
+    
+    # 合并所有变换后的点
+    # 将 after_bone_transformed_points 转换为 numpy 数组
+    after_bone_transformed_points_array = np.array([[point[0]] + list(point[1:]) for point in after_bone_transformed_points])
+    
+    # 合并所有 after_inner_transformed_points
+    all_inner_points = np.concatenate(all_transformed_inner_points, axis=0)
+    
+    # 合并 after_bone_transformed_points 和所有 after_inner_transformed_points
+    updated_node_data = np.concatenate([all_inner_points, after_bone_transformed_points_array], axis=0)
     write_modified_coordinates(
         output_file=output_file,
         file_lines=file_lines,
-        updated_node_data=all_transformed_points_combined
+        updated_node_data=updated_node_data,
     )
     print(f"所有任务完成，修改后的坐标已写入文件: {output_file}")
 
-def run_batch(task_configs):
-    """
-    批量运行多个任务
-    :param task_configs: 每个任务的配置（node_direction_map, transform_sets, etc.）
-    :param file_lines: 输入文件的行数据
-    """
-    all_shell_points,node_id_to_transformed_coords, file_lines =initialize_shell_data()  # 加载表面节点数据和目标坐标
-    
-    # 遍历任务配置，处理每个任务
-    for idx, task_settings in enumerate(task_configs):
-        print(f"开始处理任务 {idx + 1}...")
-        process_task(task_settings)
+    end_time = time.time()
+    print(f"文件名: {os.path.basename(__file__)}, 总运行时间: {end_time - start_time:.2f} s")
 
-    # 在所有任务完成后写入合并后的变换结果
-    write_all_transformed_points()
-
-
-# 示例任务配置
-task_configs = [
-    {
-        "node_direction_map": {
-            'Xnegative': [(83010467, 'coccyx'),(89066294, 'Base of sacrum'),(89066279, 'Promontory'),(83012513,'ASIS-left'),(83512514,'ASIS-right'),
-            (89004125,'Manubrium'), (89003192, 'xiphisternum'), (89059500, 'T1Am'),
-            (89034241, 'Rib10LA'),(89034350, 'Rib8LA'), (89019613, 'Rib6LA'),(89018815,'Rib4LA'),(89018618,'Rib2LA'),(89018420,'Rib1LA'),
-            (89534241, 'Rib10RA'),(89534350, 'Rib8RA'), (89519613, 'Rib6RA'),(89518815,'Rib4RA'),(89518618,'Rib2RA'),(89518420,'Rib1RA'),
-            (88178168, 'Head C.G.'),(88178675, 'Glabella'),(88176493, 'Head Top'),(87000751,'C1Am'),
-            (88265606,'eyeLU'),(88263462,'eyeRU'),(88175601,'eyeLL'),(88170878,'eyeRL'),(88261629,'nose'),
-            (88143570,''),(88261630,''),(88135352,''),
-            (88175279,''),(88170516,''),(88167682, 'chin'),
-            (82008321,''),(82007994,''),(82008524,''),(82006458,''),(82008529,''),(82007910,'',),
-            (81008321,''),(81007994,''),(81008524,''),(81006458,''),(81008529,''),(81007910,'',)
-            ],
-            'Xpositive': [(89063788, 'T12Pm'),(89000726,'T1Pm'),
-            (89053454,'Rib1LP'),(89004188,'Rib3LP'),(89019330,'Rib5LP'),(89004321,'Rib7LP'),(89004461,'Rib9LP'),(89004320,'Rib11LP'),
-            (89553454,'Rib1RP'),(89504188,'Rib3RP'),(89519330,'Rib5RP'),(89504321,'Rib7RP'),(89504461,'Rib9RP'),(89504320,'Rib11RP'),
-            (87000262,'C1Pm'),
-            (89006076,'Clavicle-Li'),(89009078,'Clavicle-Lo'),(89506076,'Clavicle-Ri'),(89509078,'Clavicle-Ro'),
-            ],
-            'Ynegative':[(88175941,'gonionL'),],
-            'Ypositive':[(88171241,'gonionR')],
+if __name__ == '__main__':
+    # 示例任务配置
+    task_settings_list = [
+        {
+            "node_direction_map": {
+                'Xnegative': [(83010467, 'coccyx'),(89066294, 'Base of sacrum'),(89066279, 'Promontory'),(83012513,'ASIS-left'),(83512514,'ASIS-right'),
+                (89004125,'Manubrium'), (89003192, 'xiphisternum'), (89059500, 'T1Am'),
+                (89034241, 'Rib10LA'),(89034350, 'Rib8LA'), (89019613, 'Rib6LA'),(89018815,'Rib4LA'),(89018618,'Rib2LA'),(89018420,'Rib1LA'),
+                (89534241, 'Rib10RA'),(89534350, 'Rib8RA'), (89519613, 'Rib6RA'),(89518815,'Rib4RA'),(89518618,'Rib2RA'),(89518420,'Rib1RA'),
+                (88178168, 'Head C.G.'),(88178675, 'Glabella'),(88176493, 'Head Top'),(87000751,'C1Am'),
+                (88265606,'eyeLU'),(88263462,'eyeRU'),(88175601,'eyeLL'),(88170878,'eyeRL'),(88261629,'nose'),
+                (88143570,''),(88261630,''),(88135352,''),
+                (88175279,''),(88170516,''),(88167682, 'chin'),
+                (82008321,''),(82007994,''),(82008524,''),(82006458,''),(82008529,''),(82007910,'',),
+                (81008321,''),(81007994,''),(81008524,''),(81006458,''),(81008529,''),(81007910,'',)
+                ],
+                'Xpositive': [(89063788, 'T12Pm'),(89000726,'T1Pm'),
+                (89053454,'Rib1LP'),(89004188,'Rib3LP'),(89019330,'Rib5LP'),(89004321,'Rib7LP'),(89004461,'Rib9LP'),(89004320,'Rib11LP'),
+                (89553454,'Rib1RP'),(89504188,'Rib3RP'),(89519330,'Rib5RP'),(89504321,'Rib7RP'),(89504461,'Rib9RP'),(89504320,'Rib11RP'),
+                (87000262,'C1Pm'),
+                (89006076,'Clavicle-Li'),(89009078,'Clavicle-Lo'),(89506076,'Clavicle-Ri'),(89509078,'Clavicle-Ro'),
+                ],
+                'Ynegative':[(88175941,'gonionL'),],
+                'Ypositive':[(88171241,'gonionR')],
+            },
+            "transform_sets": ["100"],
+            "source_shell_nodes": ["83200101", "83700101","89200801","89700801","88000222", "88000230","88000229", "88000231","88000221","88000223","87200101", "87700101","89200701", "89700701",
+                                "82200001","82200401","82200601","82201101","82201301","81200001","81200401","81200601","81201101","81201301",
+                                "89200701","86200001","86200301","86200501","86200801","86201001","89700701","85200001","85200301","85200501","85200801","85201001",
+                                ],
+            "total_side_num": 1000,
+            "total_plane_num": 100,
+            "modify_nodes": [(83010467, "X", 50),(89066294, "X", 50), (89066279, "X", 50),(83012513, "X", 50),(83512514, "X", 50),
+                            (89063788, "Z", -20),(89063788, "X", -20),
+                            (88261629, "X", -10),(88167682,"Z",-15),(88175941,"Z",-15),(88171241,"Z",-15),
+                            (82008524,"Y",-4),(81008524,"Y",4),(82008529,"Y",-1),(81008529,"Y",1)
+                            ]     
         },
-        "transform_sets": ["101","102","103","104","105","106"],
-        "source_shell_nodes": ["83200101", "83700101","89200801","89700801","88000222", "88000230","88000229", "88000231","88000221","88000223","87200101", "87700101","89200701", "89700701",
-                               "82200001","82200401","82200601","82201101","82201301",
-                               "81200001","81200401","81200601","81201101","81201301"
-                               ],
-        "total_side_num": 1000,
-        "total_plane_num": 100,
-        "modify_nodes": [(83010467, "X", 50),(89066294, "X", 50), (89066279, "X", 50),(83012513, "X", 50),(83512514, "X", 50),
-                         (89063788, "Z", -20),(89063788, "X", -20),
-                         (88261629, "X", -10),(88167682,"Z",-15),(88175941,"Z",-15),(88171241,"Z",-15),
-                         (82008524,"Y",-4),(81008524,"Y",4),(82008529,"Y",-1),(81008529,"Y",1)
-                         ]     
-    },
-]
+    ]
 
-# 执行批量任务
-file_lines = []  # 这里应为文件行数据，可以通过 `read_node_coordinates` 获取
-start_time = time.time()
-run_batch(task_configs)
-
-end_time = time.time()
-print(f"文件名: {os.path.basename(__file__)}, 总运行时间: {end_time - start_time:.2f} s")
+    task2_settings_list = [
+        {#左腿
+            "inner_method": "set",  # 获取内部节点的方法
+            "inner_param": ["201"],  # 获取内部节点的参数
+            "source_shell_method": "pid",  # 获取外壳节点的方法
+            "source_shell_param": ["82200001", "82200401", "82200601", "82201101", "82201301"],  # 外壳节点
+            "source_bone_method": "set",  # 获取骨骼节点的方法
+            "source_bone_param": ["108"],  # 骨骼节点
+            "shell_total_num": 1000,  # 外壳节点数量
+            "bone_total_num": 1000,# 骨骼节点数量
+            'rules_to_run':["全腿规则"]
+        },
+        {#左手
+            "inner_method": "set",  # 获取内部节点的方法
+            "inner_param": ["204"],  # 获取内部节点的参数
+            "source_shell_method": "pid",  # 获取外壳节点的方法
+            "source_shell_param": ["89200701","86200001","86201001","86200301","86200501","86200801","86201001"],  # 外壳节点
+            "source_bone_method": "set",  # 获取骨骼节点的方法
+            "source_bone_param": ["111"],  # 骨骼节点
+            "shell_total_num": 1000,  # 外壳节点数量
+            "bone_total_num": 1000,  # 骨骼节点数量
+            'rules_to_run':["全手部规则", "全肩胸规则",]
+        },
+        {#头
+            "inner_method": "set",  # 获取内部节点的方法
+            "inner_param": ["202"],  # 获取内部节点的参数
+            "source_shell_method": "pid",  # 获取外壳节点的方法
+            "source_shell_param": ["88000222", "88000230","88000229", "88000231","88000221","88000223","87200101", "87700101"],  # 外壳节点
+            "source_bone_method": "set",  # 获取骨骼节点的方法
+            "source_bone_param": ["109"],  # 骨骼节点
+            "shell_total_num": 1000,  # 外壳节点数量
+            "bone_total_num": 1000  # 骨骼节点数量
+        },
+        {#臀
+            "inner_method": "set",  # 获取内部节点的方法
+            "inner_param": ["205"],  # 获取内部节点的参数
+            "source_shell_method": "pid",  # 获取外壳节点的方法
+            "source_shell_param": ["83200101", "83700101"],  # 外壳节点
+            "source_bone_method": "set",  # 获取骨骼节点的方法
+            "source_bone_param": ["112"],  # 骨骼节点
+            "shell_total_num": 1000,  # 外壳节点数量
+            "bone_total_num": 1000  # 骨骼节点数量
+        },
+        {#胸
+            "inner_method": "set",  # 获取内部节点的方法
+            "inner_param": ["203"],  # 获取内部节点的参数
+            "source_shell_method": "pid",  # 获取外壳节点的方法
+            "source_shell_param": ["89200801", "89700801"],  # 外壳节点
+            "source_bone_method": "set",  # 获取骨骼节点的方法
+            "source_bone_param": ["110"],  # 骨骼节点
+            "shell_total_num": 1000,  # 外壳节点数量
+            "bone_total_num": 1000  # 骨骼节点数量
+        },
+    ]
+    # 运行所有任务
+    main(task_settings_list, task2_settings_list)

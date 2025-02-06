@@ -1,6 +1,6 @@
 import os
 import sys
-third_packages = r"G:\\anaconda3\\envs\\ansa_meta_env\\Lib\\site-packages"
+third_packages = r"G:\\pyhton3119\\Lib\\site-packages"
 sys.path.append(third_packages)
 
 import ansa
@@ -12,8 +12,8 @@ from utils_data import *
 from utils_node import *
 from utils_rbf_transform import *
 from utils_smooth import *
-from scipy.spatial import cKDTree
 from utils_reflect import reflect
+from scipy.spatial import cKDTree, Delaunay
 
 # 计算点集的几何中心
 def calculate_geometric_center(nodes):
@@ -134,8 +134,7 @@ def get_control_points4(all_points, rotated_all_points, control_fixed_method, co
 
     return source_control_points, target_control_points
 
-import numpy as np
-from scipy.spatial import cKDTree, Delaunay
+
 
 def detect_penetration_corrected(collection_set, transformed_points_second):
     """
@@ -168,14 +167,11 @@ def detect_penetration_corrected(collection_set, transformed_points_second):
     # **筛选穿透点**
     penetration_ids = second_ids[inside_mask].tolist()
 
-    print(f"✅ 发现 {len(penetration_ids)} 个穿透点！")
-    print("📌 穿透点 ID 列表:", penetration_ids)
+    print(f"发现 {len(penetration_ids)} 个穿透点！")
+    print("穿透点 ID 列表:", penetration_ids)
 
     return penetration_ids
 
-
-import numpy as np
-from scipy.spatial import cKDTree
 
 def move_penetration_to_surface(transformed_points_second, collection_set, expansion_distance=100):
     """
@@ -230,9 +226,10 @@ def move_penetration_to_surface(transformed_points_second, collection_set, expan
             # 打印输出穿透点移动后的新位置
             print(f"穿透点 NodeID {pid} 当前位置: {point} 新位置: {new_position}")
 
-    print(f"✅ 所有穿透点所在平面已向外扩展了 {expansion_distance} 米。")
+    print(f"所有穿透点所在平面已向外扩展了 {expansion_distance} 米。")
     
-    return transformed_points_second
+    return transformed_points_second, penetration_ids
+
 
 def main(params):
     # 直接从字典中提取各个参数
@@ -340,12 +337,28 @@ def main(params):
             second_transition_filtered_points, source_control_points_second, target_control_points_second, 0, 20000,
             kernel=kernel, **kernel_params
         )
-        update_ansa_node_coordinates(transformed_points_second, second_transition_filtered_nodes)
         if 'collision_set' in params:
-            print("🔍 执行穿透检测...")
-            transformed_points_second= move_penetration_to_surface(transformed_points_second, params['collision_set'],expansion_distance = -10)
+            max_iterations = 1  # 你可以修改这个数值来控制最大循环次数
 
-        update_ansa_node_coordinates(transformed_points_second, second_transition_filtered_nodes)
+            for iteration in range(max_iterations):
+                print(f"执行第 {iteration + 1} 轮穿透检测...")
+
+                penetration_ids = detect_penetration_corrected(params['collision_set'], transformed_points_second)
+
+                if not penetration_ids:
+                    print("未检测到穿透点，退出修正流程。")
+                    break  # 如果没有穿透点，提前结束
+
+                print(f"发现 {len(penetration_ids)} 个穿透点，执行修正...")
+                transformed_points_second, penetration_ids = move_penetration_to_surface(
+                    transformed_points_second, params['collision_set'], expansion_distance=-18
+                )
+                update_ansa_node_coordinates(transformed_points_second, second_transition_filtered_nodes)
+
+                print("进行局部平滑处理...")
+                laplacian_smoothing(pids=["89200702"], iterations=2, alpha=0)
+
+            print(f"穿透检测 & 修正流程完成，共执行 {iteration + 1} 次迭代。")
 
     # 记录总的开始时间
 start_time = time.time()
@@ -413,8 +426,8 @@ params_shoulder = {
 # 调用main函数，只需要传递封装的参数字典
 main(params_shoulder)
 
-# laplacian_smoothing(pids=["89200701"], iterations=10, alpha=0.01)
-#reflect(rules_to_run=["全手部规则","全肩胸规则"])
+laplacian_smoothing(pids=["89200701"], iterations=10, alpha=0.01)
+reflect(rules_to_run=["全手部规则","全肩胸规则"])
 # 打印运行时间
 end_time = time.time()
 print(f"文件名: {os.path.basename(__file__)}, 总运行时间: {end_time - start_time:.2f} s")

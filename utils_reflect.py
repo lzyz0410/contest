@@ -13,9 +13,6 @@ reflect(rules_to_run=True)
 # 调用 reflect() 函数，执行指定的规则
 reflect(rules_to_run=["手臂规则", "腿部规则"])
 '''
-# # 缓存变量
-# MAPPING_FILE_PATH = "E:\\LZYZ\\Scoliosis\\RBF\\Contest\\final\\node_mapping.csv"
-# **调用函数**
 MAPPING_FILE_PATH = find_file_in_parents("node_mapping.csv")
 mapping = None
 reverse_mapping = None
@@ -149,7 +146,7 @@ def reflect_coordinates_with_near_plane_handling(REFLECTION_PLANE,coords, tolera
 def reflect(rules_to_run=True):
     # **确保 rules_to_run 处理正确**
     normal_rules = ["头部规则", "颈部规则", "肩胸规则", "手部规则", "腿部规则", "臀部规则"]
-    full_body_rules = ["全手部规则", "全肩胸规则"]
+    full_body_rules = ["全手部规则", "全肩胸规则","全腿规则"]
 
     if rules_to_run is True:
         rules_to_run = normal_rules  # 运行所有普通规则（不包含全手部、全肩胸）
@@ -186,6 +183,7 @@ def reflect(rules_to_run=True):
         rules.update({
             "全肩胸规则": lambda nodes: [node for node in nodes if str(node._id).startswith(("89"))],
             "全手部规则": lambda nodes: [node for node in nodes if str(node._id).startswith(("85", "86"))],
+            "全腿规则": lambda nodes: [node for node in nodes if str(node._id).startswith(("81", "82"))],
         })
 
     # 如果未指定 rules_to_run，则执行所有规则
@@ -202,6 +200,8 @@ def reflect(rules_to_run=True):
     total_left_nodes = set()  # 使用集合避免重复
     total_right_nodes = set()
     total_plane_nodes = set()
+
+    modified_points = []  # 用于存储修改过的节点及坐标的列表
 
     # 按规则名称遍历并应用规则
     for rule_name in rules_to_run:
@@ -238,6 +238,7 @@ def reflect(rules_to_run=True):
                     if symmetric_id in node_id_map:
                         right_node = node_id_map[symmetric_id]
                         right_node.position = tuple(new_coord)  # 更新右侧节点的坐标
+                        modified_points.append([right_node._id] + list(new_coord))  # 存储修改后的节点及坐标
                     else:
                         print(f"未找到与节点 ID {node._id} 对应的对称节点 ID {symmetric_id}！")
                 else:
@@ -278,3 +279,16 @@ def reflect(rules_to_run=True):
     print(f"  总节点数量: {len(total_left_nodes) + len(total_right_nodes) + len(total_plane_nodes)}")
 
     print("所有规则处理完成！") 
+
+    # 返回一个包含所有修改过的节点及其坐标的 np.array (n * 4)
+    modified_points_array = np.array(modified_points)  # 转换为 NumPy 数组
+
+    # 验证数组形状
+    if modified_points_array.size == 0:
+        print("警告：未修改任何节点，返回空数组。")
+        return np.empty((0, 4))  # 返回一个空的 (0, 4) 数组
+    elif modified_points_array.shape[1] != 4:
+        print(f"错误：modified_points 的形状为 {modified_points_array.shape}，不符合 (n, 4) 的要求。")
+        raise ValueError("modified_points 的形状必须为 (n, 4)。")
+
+    return modified_points_array

@@ -1,6 +1,6 @@
 import os
 import sys
-third_packages = r"G:\\anaconda3\\envs\\ansa_meta_env\\Lib\\site-packages"
+third_packages = r"G:\\pyhton3119\\Lib\\site-packages"
 sys.path.append(third_packages)
 import ansa
 from ansa import *
